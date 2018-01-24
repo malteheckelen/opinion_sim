@@ -1,3 +1,4 @@
-./images
-./data
-./report_outputs
+./images/**
+./data/**
+./report_outputs/**
+./resources/**

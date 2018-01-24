@@ -13,3 +13,5 @@ Should contain code that a.) is an interface to ALL the other code and b.) loads
 This means that there are variable functions corresponding to agent behavior, network type simulation, and restrictions. These are then sourced depending on parameterization.
 
 Stable elements are all those that are all those more abstract than those mentioned: stable agent attributes (opinion), as well as data output in the form of summary statistics (opinion distributions).
+
+https://spades.shinyapps.io/ForestChange_ProofOfConcept/
