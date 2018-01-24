@@ -52,3 +52,7 @@ params(sim)$caribouMovementLcc$glmInitialTime # Parameter sind ansprechbar über
 # In simInit() werden die Werte dann nach Gebrauch verändert
 # glmInitialTime wird z.B. in caribouMovement als Startzeitpunkt der GLMs benutzt (welche als Grundlage für spätere Plotting-Events dienen)
 
+
+#if(!dir.exists(file.path(getPaths()$modulePath, "speciesAbundance"))){
+#  newModule(name = "speciesAbundance", path = getPaths()$modulePath)
+#}

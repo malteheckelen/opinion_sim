@@ -3,17 +3,17 @@
 stopifnot(packageVersion("SpaDES") >= "1.2.0.9006")
 
 defineModule(sim, list(
-  name = "hegselmann_krause",
-  description = "Simulate bounded confidence opinion dynamics model in the sense of Krause (1997) and Hegselmann / Krause (2000)",
+  name = "lattice",
+  description = "Lattice network environment generator for use with different.",
   keywords = c("network", "graph", "environment", "lattice"),
   childModules = character(),
-  authors = c(person(c("Malte", "Lars"), "Heckelen", email = "matle.heckelen@ilw.uni-stuttgar.de", role = c("aut", "cre"))),
+  authors = c(person(c("Malte", "Lars"), "Heckelen", email = "malte.heckelen@ilw.uni-stuttgar.de", role = c("aut", "cre"))),
   version = numeric_version("0.0.1"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "tick",
   citation = list("citation.bib"),
-  documentation = list("README.txt", "hegselmann_krause.Rmd"),
+  documentation = list("README.txt", "lattice.Rmd"),
   reqdPkgs = list("igraph"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -21,17 +21,16 @@ defineModule(sim, list(
   inputObjects = data.frame(
     objectName = c("no_agents", "directed"),
     objectClass = c("numeric", "logical")
-    )
+    ),
   outputObjects = data.frame(
-    objectName = c("caribou", "caribouRas", "glmPlot", "glmPVals"),
-    objectClass = c("SpatialPointsDataFrame", "RasterLayer", "gg", "numeric"),
-    other = rep(NA_character_, 4L), stringsAsFactors = FALSE)
-))
+    objectName = c("adjacency_matrix"),
+    objectClass = c("dgCMatrix")
+    )
+  )
+)
 
-make_lattice(dimvector = NULL, length = NULL, dim = NULL, nei = 1,
-             directed = FALSE, mutual = FALSE, circular = FALSE)
 
-construct_environment <- function(no_agents, directed=FALSE) {
+construct_environment <- function() {
   
   directed <- directed
   
