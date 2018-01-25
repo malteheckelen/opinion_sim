@@ -27,8 +27,8 @@ defineModule(sim, list(
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
     ),
   inputObjects = data.frame(
-    objectName = c("adjacency_matrix", "epsilon"),
-    objectClass = c("dgCMatrix", "numeric"),
+    objectName = c("adjacency_matrix"),
+    objectClass = c("dgCMatrix"),
     sourceURL  =  c(NA_character_, NA_character_),
     other = rep(NA_character_, 2L), stringsAsFactors = FALSE),
   outputObjects = data.frame(
@@ -37,7 +37,7 @@ defineModule(sim, list(
     other = rep(NA_character_, 4L), stringsAsFactors = FALSE)
 ))
 
-doEvent.hegselmann_krause = function(sim, eventTime, eventType, debug = FALSE) {
+doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) {
   switch(
     eventType,
     init = {
@@ -62,32 +62,32 @@ doEvent.hegselmann_krause = function(sim, eventTime, eventType, debug = FALSE) {
 
 hegselmann_krauseInit <- function(sim) {
   # set within_epsilon column in opinions simulation attribute
+  # reserve the Init in ever of these simulations to place special
 
-  sim$opinions <- sim$opinions %>% mutate(within_epsilon = 0)
+  sim$agent_characteristics$opinions <- sim$agent_characteristics$opinions %>% mutate(within_epsilon = 0)
   
   return(invisible(sim))
 }
 
 hegselmann_krauseStep <- function(sim) {
   
-  distance_matrix <- matrix(length=no_agents^2, ncol=2)
+  # this function successively narrows the "eligible" opinions down
   
-  apply(seq(1, no_agents, 1), function(x) { apply(seq(1, no_agents, 1), function(x) {
+  # distance matrix: computed the same way in every one of these models
+  distance_matrix <- matrix(nrow=sim$no_agents, ncol=sim$no_agents) # pre-allocate
+  distance_matrix <- outer(sim$agent_characteristics$opinions, sim$agent_characteristics$opinions, FUN="-") # outer product
+  
+  # neighbor distances; retains only distances to neighbors (all others 0)
+  neighbor_distance_matrix <- matrix(nrow=sim$no_agents, ncol=sim$no_agents) # pre-allocate
+  neighbor_distance_matrix <- sim$adjacency_matrix * distance_matrix
     
-    distance_matrix[x,y] <- sim$opinions$opinion
-    
-    
+  # boolean matrix of "eligible" opinions of neighbors according to distance criterion: only for some models
+  within_epsilon_matrix <- matrix(nrow=sim$no_agents, ncol=sim$no_agents) # pre-allocate
+  within_epsilon_matrix <- neighbor_distance_matrix > epsilon
+  
+  # opinion updating
+  sim$agent_characteristics$opinions <- apply(within_epsilon_matrix, 1, function(x) { 
+    sum(sim$agent_characteristics$opinions[x]) / length(x) # hk updating rule: mean of opinions of eligible neigbors
   })
-  })
-  
-  opinions_temp <- as.numeric(sim$opinions$opinions)
-  
-  distance_matrix <- 
-  sim$opinions$within_epsilon <- sim$opinions %>%
-    mutate(ifelse( abs( sim$opinions[ ego[["id"]], ] - opinions) < sim$epsilon, 1, 0))
-  
-  sim$opinions <- (sim$adjacency_matrix[ ego[["id"]], ] * sim$opinions) %>%
-    mean() / sum(sim$opinions$within_epsilon)
-  
+      
 }
-
