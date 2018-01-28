@@ -19,23 +19,41 @@ defineModule(sim, list(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("directed", "logical", FALSE, NA, NA, "Determines if the graph should be directed.")
   ),
-  inputObjects = data.frame(
-    objectName = c("no_agents", "directed"),
-    objectClass = c("numeric", "logical")
-    ),
-  outputObjects = data.frame(
-    objectName = c("adjacency_matrix"),
-    objectClass = c("dgCMatrix")
-    )
+  inputObjects = 
+    expectsInput("no_agents", "numeric", NA, NA, NA),
+  outputObjects = 
+    createsOutput("environment", "tbl_graph", NA, NA, NA)
   )
 )
 
+doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
+  
+  switch (
+    eventType, 
+    init = {
+      
+      # first instance
+      sim <- lattice_Init(sim)
+      
+      # future events (if necessary)
+      
+    }
+  )
+  
+  return(invisible(sim))
+}
+
+lattice_Init <- function(sim) {
+  
+  construct_environment()
+  
+}
 
 construct_environment <- function() {
   
   directed <- directed
     
-  envir <- create_lattice(n=length, dim=2, directed=directed)
+  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed)
   
   return(envir)
   

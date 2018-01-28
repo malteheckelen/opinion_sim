@@ -26,16 +26,11 @@ defineModule(sim, list(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
     ),
-  inputObjects = data.frame(
-    objectName = c("adjacency_matrix"),
-    objectClass = c("dgCMatrix"),
-    sourceURL  =  c(NA_character_, NA_character_),
-    other = rep(NA_character_, 2L), stringsAsFactors = FALSE),
-  outputObjects = data.frame(
-    objectName = c("caribou", "caribouRas", "glmPlot", "glmPVals"),
-    objectClass = c("SpatialPointsDataFrame", "RasterLayer", "gg", "numeric"),
-    other = rep(NA_character_, 4L), stringsAsFactors = FALSE)
-))
+  inputObjects = 
+    expectsInput("environment", "tbl_graph", NA, NA, NA)
+)
+)
+
 
 doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) {
   switch(
@@ -47,12 +42,12 @@ doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) 
       ## schedule future event(s)
       sim <- scheduleEvent(sim, eventTime = start(sim), moduleName = "hegselmann_krause", eventType = "Step")
     },
-    Step = {
+    step = {
       ## do stuff for this event
       sim <- hegselmann_krauseStep(sim)
       
       ## schedule future event(s)
-      sim <- scheduleEvent(sim, eventTime = time(sim)+1, moduleName = "hegselmann_krause", eventType = "Step")
+      sim <- scheduleEvent(sim, eventTime = time(sim)+1, moduleName = "hegselmann_krause", eventType = "step")
     },
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
