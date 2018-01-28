@@ -19,10 +19,12 @@ defineModule(sim, list(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("directed", "logical", FALSE, NA, NA, "Determines if the graph should be directed.")
   ),
-  inputObjects = 
-    expectsInput("no_agents", "numeric", NA, NA, NA),
-  outputObjects = 
+  inputObjects = bind_rows(
+    expectsInput("no_agents", "numeric", NA, NA, NA)
+  ),
+  outputObjects = bind_rows(
     createsOutput("environment", "tbl_graph", NA, NA, NA)
+  )
   )
 )
 
@@ -53,7 +55,10 @@ construct_environment <- function() {
   
   directed <- directed
     
-  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed)
+  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed) %>%
+    activate(nodes) %>%
+    mutate(neighborhood = local_members(mindist = 1)) %>%
+    mutate(nbh_size = local_size(mindist = 1))
   
   return(envir)
   
