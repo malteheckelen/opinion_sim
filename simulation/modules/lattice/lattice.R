@@ -14,9 +14,10 @@ defineModule(sim, list(
   timeunit = "tick",
   citation = list("citation.bib"),
   documentation = list("README.txt", "lattice.Rmd"),
-  reqdPkgs = list("igraph"),
+  reqdPkgs = list("igraph", "tidygraph"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
+    defineParameter("directed", "logical", FALSE, NA, NA, "Determines if the graph should be directed.")
   ),
   inputObjects = data.frame(
     objectName = c("no_agents", "directed"),
@@ -33,11 +34,9 @@ defineModule(sim, list(
 construct_environment <- function() {
   
   directed <- directed
-  
-  length <- no_agents / 2
     
-  envir <- make_lattice(length=length, dim=2, directed=directed)
+  envir <- create_lattice(n=length, dim=2, directed=directed)
   
-  return(get.adjacency(envir))
+  return(envir)
   
 }

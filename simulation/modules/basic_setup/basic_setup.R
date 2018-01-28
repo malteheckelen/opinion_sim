@@ -34,7 +34,8 @@ doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
 
 basic_setupInit <- function(sim) {
   
-  sim$no_agents <- 
+  sim$no_agents <- no_agents
+    
 }
 
 
