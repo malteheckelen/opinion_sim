@@ -5,7 +5,7 @@ defineModule(sim, list(
   description = "Barebones setup for combination with the actual Bounded Confidence Model simulation modules.",
   keywords = c("opinion dynamics", "setup", "bounded confidence"),
   childModules = character(),
-  authors = c(person(c("Malte", "Lars"), "Heckelen", email = "malte.heckelen@ilw.uni-stuttgar.de", role = c("aut", "cre"))),
+  authors = c(person(c("Malte", "Lars"), "Heckelen", email = "malte.heckelen@ilw.uni-stuttgart.de", role = c("aut", "cre"))),
   version = numeric_version("0.0.1"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
@@ -23,18 +23,19 @@ defineModule(sim, list(
     other = rep(NA_character_, 4L), stringsAsFactors = FALSE)
 ))
 
-doEvent.basic_setup <- function(sim) {
+doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
   switch(
     eventType,
     init = {
-      
+      sim <- basic_setupInit(sim)
     }
   )
 }
 
-
-
-basic_SetupInit
+basic_setupInit <- function(sim) {
+  
+  sim$no_agents <- 
+}
 
 
 
