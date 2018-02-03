@@ -4,7 +4,7 @@ stopifnot(packageVersion("SpaDES") >= "1.2.0.9006")
 
 defineModule(sim, list(
   name = "lattice",
-  description = "Lattice network environment generator for use with different.",
+  description = "Lattice network environment generator for use with different models.",
   keywords = c("network", "graph", "environment", "lattice"),
   childModules = character(),
   authors = c(person(c("Malte", "Lars"), "Heckelen", email = "malte.heckelen@ilw.uni-stuttgart.de", role = c("aut", "cre"))),
@@ -35,10 +35,8 @@ doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
     init = {
       
       # first instance
-      sim <- lattice_Init(sim)
-      
-      # future events (if necessary)
-      
+      lattice_Init(sim)
+
     }
   )
   
@@ -47,19 +45,28 @@ doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
 
 lattice_Init <- function(sim) {
   
-  construct_environment()
+  sim$environment <- construct_environment(sim)
+  
+  sim$agent_characteristics <- envir %>%
+    activate(nodes) %>%
+    mutate(neighborhood = local_members(mindist = 1)) %>%
+    mutate(nbh_size = local_size(mindist = 1)) %>%
+    as.tibble() %>%
+    select(neighborhood, nbh_size) %>%
+    cbind(sim$agent_characteristics)
   
 }
 
-construct_environment <- function() {
+construct_environment <- function(sim) {
   
   directed <- directed
-    
-  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed) %>%
-    activate(nodes) %>%
-    mutate(neighborhood = local_members(mindist = 1)) %>%
-    mutate(nbh_size = local_size(mindist = 1))
+  
+  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed)
   
   return(envir)
+  
+}
+
+get_network_statistics <- function() {
   
 }

@@ -15,7 +15,9 @@ defineModule(sim, list(
   reqdPkgs = list("dplyr"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
+    defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
+    defineParameter("opinion_distribution", "character", "uniform", NA, "The random probability distribution for initial opinion assignment."),
+    defineParameter("spread", "numeric", 0.0, NA, "The spread of the opinion distribution (sd), if applicable.")
   ),
   outputObjects = data.frame(
     objectName = c("no_agents"),
@@ -35,7 +37,29 @@ doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
 basic_setupInit <- function(sim) {
   
   sim$no_agents <- no_agents
+  
+  sim$agent_characteristics <- tibble(
     
+    agent_id = seq(1, sim$no_agents, 1),
+    opinion = rep(1, sim$no_agents)
+    
+  )
+  
+  switch (
+    opinion_distribution, 
+    "uniform" = {
+      
+      sim$agent_characteristics$opinion <- runif(sim$no_agents, 0, 1)
+      
+    }
+    "normal" = {
+      
+      sim$agent_characteristics$opinion <- rnorm(sim$no_agents, 0.5, spread)
+      
+    }
+    
+  )
+ 
 }
 
 
