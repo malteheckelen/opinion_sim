@@ -45,11 +45,12 @@ doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
 
 lattice_Init <- function(sim) {
   
-  sim$environment <- construct_environment(sim)
-  
-  sim$agent_characteristics <- envir %>%
+  sim$environment <- construct_environment(sim) %>%
     activate(nodes) %>%
-    mutate(agent_id = sim$agent_characteristics$agent_id) %>%
+    mutate(agent_id = sim$agent_characteristics$agent_id)
+  
+  sim$agent_characteristics <- sim$environment %>%
+    activate(nodes) %>%
     mutate(neighborhood = local_members(mindist = 1)) %>%
     mutate(nbh_size = local_size(mindist = 1)) %>%
     as.tibble() %>%

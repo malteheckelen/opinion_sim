@@ -41,7 +41,7 @@ doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) 
       sim <- hegselmann_krauseInit(sim)
       
       ## schedule future event(s)
-      sim <- scheduleEvent(sim, eventTime = start(sim), moduleName = "hegselmann_krause", eventType = "Step")
+      sim <- scheduleEvent(sim, eventTime = start(sim), moduleName = "hegselmann_krause", eventType = "step")
     },
     step = {
       ## do stuff for this event
@@ -65,24 +65,19 @@ hegselmann_krauseInit <- function(sim) {
 
 hegselmann_krauseStep <- function(sim) {
   
-  # get distances to all neighbors on edge table as well as logical for within_epsilon
-  sim$environment <- sim$environment %>%
+  # create a distance table
+  sim$distances_table <- sim$environment %>%
     activate(edges) %>%
-    mutate(distance = abs(sim$agent_characteristics$opinion[sim$agent_characteristics$opinions$agent == from] - sim$agent_characteristics$opinions[sim$agent_characteristics$opinions$agent == to])) %>%
-    mutate(within = distance < sim$epsilon)
+    as.tibble() %>%
+    mutate(distance = abs(filter(sim$agent_characteristics, agent_id == from)$opinion - filter(sim$agent_characteristics, agent_id == to)$opinion)) %>%
+    mutate(within_epsilon = distance < epsilon)
   
-  # create number of all agents within epsilon
-  sim$environment <- sim$environment %>%
-    activate(nodes) %>%
-    mutate(within_epsilon = length(sim$environment$
-    
-    
-}
-
-get_epsilon <- function(sim) {
-  
-  difference <- sim$environment %>%
-    activate(edges) %>% 
-    
+  # create number of all agents within epsilon in agent_characteristics as length of boolean vector within_epsilon
+  # compute new opinion vector
+  sim$agent_characteristics <- sim$agent_characteristics %>%
+    mutate(no_within = length(
+      filter(sim$distances_table, from == agent_id)$within_epsilon
+    )) %>%
+    mutate(opinion = sum(filter(sim$agent_characteristics, agent_id == from)$distance) / no_within)
   
 }
