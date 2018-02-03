@@ -49,11 +49,12 @@ lattice_Init <- function(sim) {
   
   sim$agent_characteristics <- envir %>%
     activate(nodes) %>%
+    mutate(agent_id = sim$agent_characteristics$agent_id) %>%
     mutate(neighborhood = local_members(mindist = 1)) %>%
     mutate(nbh_size = local_size(mindist = 1)) %>%
     as.tibble() %>%
-    select(neighborhood, nbh_size) %>%
-    cbind(sim$agent_characteristics)
+    select(agent_id, neighborhood, nbh_size) %>%
+    inner_join(sim$agent_characteristics)
   
 }
 
@@ -61,12 +62,9 @@ construct_environment <- function(sim) {
   
   directed <- directed
   
-  envir <- create_lattice(n=sim$no_agents, dim=2, directed=directed)
+  dims <- c(floor(sim$no_agents/2), ceiling(sim$no_agents/2))
+  envir <- create_lattice(dims, directed=directed)
   
   return(envir)
-  
-}
-
-get_network_statistics <- function() {
   
 }

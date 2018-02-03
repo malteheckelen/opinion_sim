@@ -61,11 +61,3 @@ basic_setupInit <- function(sim) {
   )
  
 }
-
-
-
-
-
-
-
-# make agents_characteristics attribute as tibble, which in this most basic form only contains a column named opinions
