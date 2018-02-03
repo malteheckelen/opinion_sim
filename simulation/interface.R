@@ -1,6 +1,5 @@
 ### Interface
 
-
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
 ## decide where you're working
@@ -35,24 +34,19 @@ modules <- list("basic_setup", "lattice", "hegselmann_krause", "data_collection"
 times <- list(start = 0.0, end = 1000)
 
 parameters <- list(
-  .globals = list(adjacency_matrix = "adjacency_matrix", no_agents = 100), # globals set global variables
-  basic_setup = list()
-  hegselmann_krause = list()
+  basic_setup = list(
+    no_agents = 100
+    ),
+  lattice = list(
+    directed = FALSE
+  ),
+  hegselmann_krause = list(
+    epsilon = 0.1
+  )
 )
 
-paths <- list(modulePath = system.file("sampleModules", package = "SpaDES.core"))
+paths <- getPaths()
 
 SIM <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
 out <- spades(SIM, .plotInitialTime = NA) # parameter means plotting is off (faster)
-
-params(sim)$caribouMovementLcc$glmInitialTime # Parameter sind ansprechbar über die params()Funtion
-# Der Output ist ein Objekt, dass für die Modulobjekte einzelne Attribute hat
-# die Modulparameter werden in den Modulen nur per Default-Wert gesettet
-# In simInit() werden die Werte dann nach Gebrauch verändert
-# glmInitialTime wird z.B. in caribouMovement als Startzeitpunkt der GLMs benutzt (welche als Grundlage für spätere Plotting-Events dienen)
-
-
-#if(!dir.exists(file.path(getPaths()$modulePath, "speciesAbundance"))){
-#  newModule(name = "speciesAbundance", path = getPaths()$modulePath)
-#}

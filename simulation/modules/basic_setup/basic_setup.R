@@ -11,7 +11,7 @@ defineModule(sim, list(
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "tick",
   citation = list("citation.bib"),
-  documentation = list("README.txt", "hegselmann_krause.Rmd"),
+  documentation = list("README.txt", "data_collection.Rmd"),
   reqdPkgs = list("dplyr"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -19,10 +19,9 @@ defineModule(sim, list(
     defineParameter("opinion_distribution", "character", "uniform", NA, "The random probability distribution for initial opinion assignment."),
     defineParameter("spread", "numeric", 0.0, NA, "The spread of the opinion distribution (sd), if applicable.")
   ),
-  outputObjects = data.frame(
-    objectName = c("no_agents"),
-    objectClass = c("numeric"),
-    other = rep(NA_character_, 4L), stringsAsFactors = FALSE)
+  outputObjects = bind_rows(
+    createsOutput("no_agents", "numeric", NA, NA, NA)
+  )
 ))
 
 doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
@@ -51,7 +50,7 @@ basic_setupInit <- function(sim) {
       
       sim$agent_characteristics$opinion <- runif(sim$no_agents, 0, 1)
       
-    }
+    },
     "normal" = {
       
       sim$agent_characteristics$opinion <- rnorm(sim$no_agents, 0.5, spread)

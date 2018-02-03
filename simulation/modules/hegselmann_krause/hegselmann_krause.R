@@ -28,6 +28,10 @@ defineModule(sim, list(
     ),
   inputObjects = bind_rows(
     expectsInput("environment", "tbl_graph", NA, NA, NA)
+  ),
+  outputObjects = bind_rows(
+    createsOutput("agent_characteristics", "tbl_graph", NA, NA, NA),
+    createsOutput("distances_table", "tbl_df", NA, NA, NA)
   )
   )
 )
