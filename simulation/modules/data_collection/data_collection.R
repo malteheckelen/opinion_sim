@@ -14,8 +14,8 @@ defineModule(sim, list(
   documentation = list("README.txt", "data.collection.Rmd"),
   reqdPkgs = list("dplyr"),
   inputObjects = bind_rows(
-    expectsInput("agent_characteristics", "tbl_graph", NA, NA, NA),
-    expectsInput("distances_table", "tbl_df", NA, NA, NA)
+    expectsInput("agent_characteristics", "tbl_df", "The characteristics of each agent."),
+    expectsInput("distances_table", "tbl_df", "The table of opinion distances.")
   )
 ))
 
@@ -48,9 +48,10 @@ data_collectionInit <- function(sim) {
     time = time(sim)
   )
   
+  return(invisible(sim))
 }
 
-data_collectionInit <- function(sim) {
+data_collectionStep <- function(sim) {
   
   temp <- tibble(
     opinions = sim$agent_characteristics$opinion,
@@ -60,5 +61,6 @@ data_collectionInit <- function(sim) {
   sim$data_collect <- temp %>%
     rbind(sim$data_collect)
   
+  return(invisible(sim))
 }
     

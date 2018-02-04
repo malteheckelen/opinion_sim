@@ -14,16 +14,16 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "lattice.Rmd"),
-  reqdPkgs = list("igraph", "tidygraph"),
+  reqdPkgs = list("igraph", "tidygraph", "dplyr"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter("directed", "logical", FALSE, NA, NA, "Determines if the graph should be directed.")
+    defineParameter("directed", "logical", "FALSE", NA, NA, "Determines if the graph should be directed.")
   ),
   inputObjects = bind_rows(
-    expectsInput("no_agents", "numeric", NA, NA, NA)
+    expectsInput("no_agents", "numeric", "The number of agents.")
   ),
   outputObjects = bind_rows(
-    createsOutput("environment", "tbl_graph", NA, NA, NA)
+    createsOutput("environment", "tbl_graph", "The network environment for the agents.")
   )
   )
 )
@@ -53,7 +53,7 @@ lattice_Init <- function(sim) {
     activate(nodes) %>%
     mutate(neighborhood = local_members(mindist = 1)) %>%
     mutate(nbh_size = local_size(mindist = 1)) %>%
-    as.tibble() %>%
+    as_tibble() %>%
     select(agent_id, neighborhood, nbh_size) %>%
     inner_join(sim$agent_characteristics)
   
@@ -61,9 +61,9 @@ lattice_Init <- function(sim) {
 
 construct_environment <- function(sim) {
   
-  directed <- directed
+  directed <- params(sim)$lattice$directed
   
-  dims <- c(floor(sim$no_agents/2), ceiling(sim$no_agents/2))
+  dims <- c(floor(sqrt(sim$no_agents)), ceiling(sqrt(sim$no_agents)))
   envir <- create_lattice(dims, directed=directed)
   
   return(envir)

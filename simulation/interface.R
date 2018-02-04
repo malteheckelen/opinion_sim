@@ -49,4 +49,4 @@ paths <- getPaths()
 
 SIM <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
-out <- spades(SIM, .plotInitialTime = NA) # parameter means plotting is off (faster)
+out <- spades(SIM)

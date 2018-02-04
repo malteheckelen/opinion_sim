@@ -13,14 +13,15 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("README.txt", "data_collection.Rmd"),
   reqdPkgs = list("dplyr"),
-  parameters = rbind(
+  parameters = bind_rows(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
-    defineParameter("opinion_distribution", "character", "uniform", NA, "The random probability distribution for initial opinion assignment."),
-    defineParameter("spread", "numeric", 0.0, NA, "The spread of the opinion distribution (sd), if applicable.")
+    defineParameter("opinion_distribution", "character", "uniform", NA, NA, "The random probability distribution for initial opinion assignment."),
+    defineParameter("spread", "numeric", 0.0, NA, NA, "The spread of the opinion distribution (sd), if applicable.")
   ),
   outputObjects = bind_rows(
-    createsOutput("no_agents", "numeric", NA, NA, NA)
+    createsOutput("no_agents", "numeric", "The number of agents."),
+    createsOutput("agent_characteristics", "tbl_df", "The characteristics of each agent.")
   )
 ))
 
@@ -35,7 +36,7 @@ doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
 
 basic_setupInit <- function(sim) {
   
-  sim$no_agents <- no_agents
+  sim$no_agents <- params(sim)$basic_setup$no_agents
   
   sim$agent_characteristics <- tibble(
     
@@ -45,7 +46,7 @@ basic_setupInit <- function(sim) {
   )
   
   switch (
-    opinion_distribution, 
+    params(sim)$basic_setup$opinion_distribution, 
     "uniform" = {
       
       sim$agent_characteristics$opinion <- runif(sim$no_agents, 0, 1)
@@ -59,4 +60,5 @@ basic_setupInit <- function(sim) {
     
   )
  
+  return(invisible(sim))
 }

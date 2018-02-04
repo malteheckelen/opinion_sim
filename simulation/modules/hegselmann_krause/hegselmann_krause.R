@@ -27,11 +27,12 @@ defineModule(sim, list(
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
     ),
   inputObjects = bind_rows(
-    expectsInput("environment", "tbl_graph", NA, NA, NA)
+    expectsInput("environment", "tbl_graph", "The environment for the agents"),
+    expectsInput("agent_characteristics", "tbl_df", "The characteristics of each agent.")
   ),
   outputObjects = bind_rows(
-    createsOutput("agent_characteristics", "tbl_graph", NA, NA, NA),
-    createsOutput("distances_table", "tbl_df", NA, NA, NA)
+    createsOutput("agent_characteristics", "tbl_df", "The characteristics of each agent."),
+    createsOutput("distances_table", "tbl_df", "The table of opinion distances.")
   )
   )
 )
@@ -72,9 +73,9 @@ hegselmann_krauseStep <- function(sim) {
   # create a distance table
   sim$distances_table <- sim$environment %>%
     activate(edges) %>%
-    as.tibble() %>%
+    as_tibble() %>%
     mutate(distance = abs(filter(sim$agent_characteristics, agent_id == from)$opinion - filter(sim$agent_characteristics, agent_id == to)$opinion)) %>%
-    mutate(within_epsilon = distance < epsilon)
+    mutate(within_epsilon = distance < params(sim)$hegselmann_krause$epsilon)
   
   # create number of all agents within epsilon in agent_characteristics as length of boolean vector within_epsilon
   # compute new opinion vector
