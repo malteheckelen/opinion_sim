@@ -9,7 +9,7 @@ defineModule(sim, list(
   version = numeric_version("0.0.1"),
   spatialExtent = raster::extent(rep(NA_real_, 4)),
   timeframe = as.POSIXlt(c(NA, NA)),
-  timeunit = "tick",
+  timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "data.collection.Rmd"),
   reqdPkgs = list("dplyr"),
