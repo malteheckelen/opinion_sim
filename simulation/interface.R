@@ -30,19 +30,20 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "lattice", "hegselmann_krause", "data_collection")
+modules <- list("basic_setup", "small_world", "hegselmann_krause", "data_collection")
 
-times <- list(start = 0.0, end = 1000)
+times <- list(start = 0, end = 500)
 
 parameters <- list(
   basic_setup = list(
     no_agents = 100
     ),
-  lattice = list(
-    directed = FALSE
+  small_world = list(
+    dim = 1,
+    rewire_p = 0.5
   ),
   hegselmann_krause = list(
-    epsilon = 0.1
+    epsilon = 0.15
   )
 )
 
