@@ -70,21 +70,23 @@ hegselmann_krauseInit <- function(sim) {
 
 hegselmann_krauseStep <- function(sim) {
   
-  print(time(sim))
+  distances_part <- sim$environment %>%
+    activate(edges) %>%
+    as_tibble() %>%
+    mutate(from_two = from) %>%
+    mutate(to_two = to) %>%
+    mutate(from = to_two) %>%
+    mutate(to = from_two) %>%
+    select(from, to)
+  
   # create a distance table
   sim$distances_table <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
-    inner_join(sim$agent_characteristics, by=c("from" = "agent_id"))
-  
-  print(sim$distances_table)
-  sim$distances_table <- sim$distances_table %>%
-    mutate(opinion_from = opinion) %>% 
-    select(from, to, opinion_from)
-  
-  print(sim$distances_table)
-  
-  sim$distances_table <- sim$distances_table %>%
+    rbind(distances_part) %>%
+    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>% 
+    mutate(opinion_from = opinion) %>%
+    select(from, to, opinion_from) %>%
     inner_join(sim$agent_characteristics, by=c("to" = "agent_id")) %>%
     mutate(opinion_to = opinion) %>% 
     select(from, to, opinion_from, opinion_to) %>%
@@ -92,15 +94,18 @@ hegselmann_krauseStep <- function(sim) {
     mutate(distance = abs(distance)) %>%
     mutate(within_epsilon = distance < params(sim)$hegselmann_krause$epsilon)
   
-  print(sim$distances_table)
-  print(sim$agent_characteristics) # NEXT STEP: DOUBLED COLUMNS NEED TO BE SINGULAR
-  # create number of all agents within epsilon in agent_characteristics as length of boolean vector within_epsilon
-  # compute new opinion vector
   sim$agent_characteristics <- sim$agent_characteristics %>%
     inner_join(sim$distances_table, by=c("agent_id" = "from")) %>%
     group_by(agent_id) %>%
     mutate(no_within = sum(within_epsilon)) %>%
-    mutate(opinion = sum(distance) / no_within)
+    filter(within_epsilon == TRUE) %>%
+    mutate(opinion = ifelse(no_within != 0, sum(opinion_to) / no_within, opinion)) %>%
+    ungroup() %>%
+    select(agent_id, opinion) %>% 
+    full_join(sim$agent_characteristics, by="agent_id") %>% 
+    mutate(opinion = coalesce(opinion.x, opinion.y)) %>%
+    select(agent_id, opinion) %>%
+    distinct()
   
   return(invisible(sim))
   

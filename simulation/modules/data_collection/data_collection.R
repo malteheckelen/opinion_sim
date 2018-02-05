@@ -44,6 +44,7 @@ doEvent.data_collection <- function(sim, eventTime, eventType, debug=FALSE) {
 data_collectionInit <- function(sim) {
   
   sim$data_collect <- tibble(
+    agent_id = sim$agent_characteristics$agent_id,
     opinions = sim$agent_characteristics$opinion,
     time = time(sim)
   )
@@ -54,6 +55,7 @@ data_collectionInit <- function(sim) {
 data_collectionStep <- function(sim) {
   
   temp <- tibble(
+    agent_id = sim$agent_characteristics$agent_id,
     opinions = sim$agent_characteristics$opinion,
     time = time(sim)
   )
