@@ -1,5 +1,6 @@
 ### Interface
 
+setwd('~/GitHub/R_MaDisBe/simulation')
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
 ## decide where you're working
