@@ -65,7 +65,30 @@ hegselmann_krauseInit <- function(sim) {
   # set within_epsilon column in opinions simulation attribute
   # reserve the Init in every of these simulations to place special attributes for modules
   
-  sim$agent_characteristics <- sim$agent_characteristics %>%
+  sim$agent_characteristics <- sim$agent_characteristics
+  
+  sim$strategies_overall <- tibble(
+    
+    strategies = c("Receive", "Send", "Both", "Nothing"),
+    score = c(0, 0, 0, 0)
+    
+  )
+  
+  sim$strategies_send <- tibble(
+    
+    strategies = c("Unoptimized", "Optimized"),
+    score = c(0, 0)
+    
+  )
+  
+  #strategies_receive <- tibble(
+  #  
+  #  strategies = c("Systematic", "Heuristic"),
+  #  score = c(0, 0)
+  #  
+  #)
+  
+  
     
   return(invisible(sim))
 }
@@ -122,6 +145,7 @@ rc_modelStep <- function(sim) {
     mutate(distance = opinion_from - opinion_to) %>%
     mutate(distance = abs(distance)) %>%
     mutate(within_epsilon = distance < params(sim)$hegselmann_krause$epsilon)
+  
   
   
   

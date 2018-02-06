@@ -2,14 +2,57 @@
 
 environment <- create_lattice(c(10, 10)) 
 
-no_agents <- 100
+no_agents <- 10
+epsilon <- 0.1
 
 agent_characteristics <- tibble(
   
   agent_id = seq(1, no_agents, 1),
-  opinion = rep(1, no_agents)
+  opinion = runif(no_agents, 0, 1)
   
 )
+
+strategies_overall <- tibble(
+  
+  strategies = c("Receive", "Send", "Both", "Nothing"),
+  score = c(0, 0, 0, 0)
+  
+)
+
+strategies_send <- tibble(
+  
+  strategies = c("Unoptimized", "Optimized"),
+  score = c(0, 0)
+  
+)
+
+produce_altered_message <- function(opinion_send, opinion_receive) {
+  
+  # produce altered message without epsilon bound
+  altered_message <- ifelse(opinion_send < opinion_receive, 
+                            opinion_send + abs(opinion_send - opinion_receive) / 2, 
+                            opinion_send - abs(opinion_send - opinion_receive) / 2)
+  
+  # check if within epsilon to own opinion and correct
+  altered_message <- ifelse(abs(opinion_send - altered_message) > epsilon,
+                            ifelse((opinion_send - altered_message) <= 0, 0, opinion_send - altered_message),
+                            altered_message)
+  
+  return(altered_message)
+  
+} # works
+
+# make matrix of all possible optimized messages
+message_matrix <- outer(agent_characteristics$opinion, agent_characteristics$opinion, produce_altered_message) # works
+row.names(message_matrix) <- seq(1, no_agents, 1)
+colnames(message_matrix) <- seq(1, no_agents, 1)
+
+
+message_tibble <- message_matrix %>% 
+  as_tibble() %>% 
+  mutate(sender = row.names(message_matrix)) %>% 
+  gather(receiver, message, "1":"10") # works
+
 
 agent_characteristics$opinion <- runif(no_agents, 0, 1)
 
