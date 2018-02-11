@@ -57,7 +57,7 @@ distances_part <- environment %>%
   mutate(to = from_two) %>%
   select(from, to)
 
-# create a distance table
+# create a distance table with initial assumptions
 distances_table <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
@@ -140,20 +140,14 @@ produce_initial_assumption <- function(sender, receiver) {
   sender_neighborhood <- unlist(filter(agent_characteristics, agent_id == sender)$neighborhood)
   receiver_neighborhood <- unlist(filter(agent_characteristics, agent_id == receiver)$neighborhood)
   
-  # generate
-  assumed_opinion <- sapply(unlist(sender_neighborhood), function(x) {
+  size_intersect <- length(intersect(sender_neighborhood, receiver_neighborhood))
     
-    size_intersect <- length(intersect(sender_neighborhood, receiver_neighborhood))
+  if (runif(1, 0, 1) < 0.5) {
+    assumed_opinion <- (opinion + epsilon) / size_intersect
+  } else {
+    assumed_opinion <- (opinion - epsilon) / size_intersect
+  }
     
-    if (runif(1, 0, 1) < 0.5) {
-      (opinion + epsilon) / size_intersect
-    } else {
-      (opinion - epsilon) / size_intersect
-    }
-    
-    
-  })
-  
   return(assumed_opinion)
   
 } # works
