@@ -89,6 +89,9 @@ message_metrics_table <- messages %>%
   mutate(distance_to_past_messages = vec_distance_to_past(past_messages, opinion_from, message, actions)) %>%
   mutate(distance_to_past_opinions = vec_distance_to_past(past_opinions, opinion_from, message, actions)) %>% # works
   mutate(distance = vec_distance_switch(opinion_from, message, assumption_to, actions)) %>%
+  group_by(sender) %>%
+  mutate(distance = mean(distance)) %>%
+  ungroup() %>%
   mutate(distance_to_past_messages = abs(distance_to_past_messages)) %>%
   mutate(distance_to_past_opinions = abs(distance_to_past_opinions)) %>%
   mutate(distance = abs(distance)) %>%
@@ -98,9 +101,10 @@ message_metrics_table <- messages %>%
 actions_send <- message_metrics_table %>%
   mutate(util_score = distance - distance_to_past_messages - distance_to_past_opinions) %>%
   mutate(agent_id = sender) %>%
-  select(agent_id, actions, util_score)
+  select(agent_id, actions, util_score) %>%
+  distinct()
 
-  
+
 # Receiving
 agent_characteristics <- agent_characteristics %>%
   inner_join(message_table, by=c("agent_id" = "from")) %>%
