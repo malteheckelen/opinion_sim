@@ -48,7 +48,7 @@ actions_send <- tibble(
 
 ### Distances
 
-distances_part <- environment %>%
+message_part <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
   mutate(from_two = from) %>%
@@ -58,16 +58,22 @@ distances_part <- environment %>%
   select(from, to)
 
 # create a distance table with initial assumptions
-distances_table <- environment %>%
+message_table <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
-  rbind(distances_part) %>%
+  rbind(message_part) %>%
   inner_join(agent_characteristics, by=c("from" = "agent_id")) %>% 
   mutate(opinion_from = opinion) %>%
-  mutate(assumption_to = vec_produce_initial_assumption(from, to))
+  mutate(assumption_to = vec_produce_initial_assumption(from, to)) %>% 
+  select(from, to, opinion_from, assumption_to) %>%
+  mutate(past_messages = sapply(opinion_from, function(x) {list(x)} )) %>%
+  mutate(distance_to_past = mean(opinion_from - sapply(past_messages, function(x) { abs(unlist(x)) }) ))
+  mutate(distance = opinion_from - assumption_to) %>%
+  mutate(distance = abs(distance)) %>%
+  mutate(within_epsilon = distance < 0.1)
 
 agent_characteristics <- agent_characteristics %>%
-  inner_join(distances_table, by=c("agent_id" = "from")) %>%
+  inner_join(message_table, by=c("agent_id" = "from")) %>%
   group_by(agent_id) %>%
   mutate(no_within = sum(within_epsilon)) %>%
   filter(within_epsilon == TRUE) %>%
