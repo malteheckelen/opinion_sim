@@ -33,16 +33,16 @@ agent_characteristics <- environment %>%
 actions_overall <- tibble(
   
   agent_id = rep(agent_characteristics$agent_id, each=4),
-  actions = rep(c("Receive", "Send", "Both", "Nothing"), each=4),
-  score = rep(0, length(agent_characteristics$agent_id))
+  actions = rep(c("Receive", "Send", "Both", "Nothing"), no_agents),
+  score = rep(0, length(actions))
   
 )
 
 actions_send <- tibble(
   
   agent_id = rep(agent_characteristics$agent_id, each=2),
-  strategies = c("Unoptimized", "Optimized"),
-  score = rep(0, length(agent_characteristics$agent_id))
+  actions = rep(c("Unoptimized", "Optimized"), no_agents),
+  score = rep(0, length(actions))
   
 )
 
@@ -80,6 +80,7 @@ agent_characteristics <- agent_characteristics %>%
   distinct()
 
 # STEP
+
 # make matrix of all possible optimized messages
 message_matrix <- outer(agent_characteristics$opinion, agent_characteristics$opinion, produce_altered_message) # works
 row.names(message_matrix) <- seq(1, no_agents, 1)
