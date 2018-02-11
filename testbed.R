@@ -64,7 +64,7 @@ message_metrics_table <- environment %>%
   rbind(message_part) %>%
   inner_join(agent_characteristics, by=c("from" = "agent_id")) %>% 
   mutate(opinion_from = opinion) %>%
-  mutate(assumption_to = vec_produce_initial_assumption(from, to)) %>% 
+  mutate(assumption_to = opinion_from) %>% 
   select(from, to, opinion_from, assumption_to)
 
 # make matrix of all possible optimized messages
@@ -75,13 +75,13 @@ colnames(message_matrix) <- seq(1, no_agents, 1)
 messages <- message_matrix %>% 
   as_tibble() %>% 
   mutate(sender = as.numeric(row.names(message_matrix))) %>% 
-  gather(receiver, message, "1":as.character(length(colnames(message_matrix))) )
-
-message_metrics_table <- messages %>% 
+  gather(receiver, message, "1":as.character(length(colnames(message_matrix))) ) %>%
   group_by(sender) %>%
   mutate(message = mean(message)) %>%
-  ungroup() %>%
-  select(-receiver) %>%
+  select(sender, message) %>%
+  distinct()
+
+message_metrics_table <- messages %>% 
   inner_join(message_metrics_table, by=c("sender" = "from")) %>%
   mutate(past_messages = sapply(opinion_from, function(x) { list(x) } )) %>%
   mutate(past_opinions = sapply(opinion_from, function(x) { list(x) } )) %>%
@@ -94,8 +94,7 @@ message_metrics_table <- messages %>%
   ungroup() %>%
   mutate(distance_to_past_messages = abs(distance_to_past_messages)) %>%
   mutate(distance_to_past_opinions = abs(distance_to_past_opinions)) %>%
-  mutate(distance = abs(distance)) %>%
-  mutate(within_epsilon = distance < epsilon)
+  mutate(distance = abs(distance)) # works
 
 # Sending
 actions_send <- message_metrics_table %>%
@@ -107,13 +106,24 @@ actions_send <- message_metrics_table %>%
   mutate(best_action = ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")) %>%
   gather(actions, util_score, "Optimized":"Unoptimized")
 
+message_metrics_table <- actions_send %>%
+  mutate(to = agent_id) %>%
+  select(to, best_action) %>%
+  distinct() %>%
+  inner_join(message_metrics_table) %>%
+  mutate(assumption_to = vec_get_message(to, best_action)) %>%
+  distinct() %>%
+  mutate(within_epsilon = distance < epsilon) # works
+sum(opinion_to) / no_within
+
 # Receiving
 agent_characteristics <- agent_characteristics %>%
-  inner_join(message_table, by=c("agent_id" = "from")) %>%
+  inner_join(message_metrics_table, by=c("agent_id" = "sender")) %>%
   group_by(agent_id) %>%
   mutate(no_within = sum(within_epsilon)) %>%
   filter(within_epsilon == TRUE) %>%
-  mutate(opinion = ifelse(no_within != 0, sum(opinion_to) / no_within, opinion)) %>%
+  filter(actions == best_action) %>%
+  mutate(opinion = ifelse(no_within != 0, vec_get_new_opinion(agent_id, to), opinion)) %>%
   ungroup() %>%
   select(agent_id, opinion) %>% 
   full_join(agent_characteristics, by="agent_id") %>% 
@@ -220,10 +230,10 @@ distance_to_past <- function(opinion_or_message_vector, opinion, message, action
   
   distance <- switch(action,
          Unoptimized = {
-           mean(opinion - sapply(opinion_or_message_vector, function(x) { abs(unlist(x)) }) )
+           mean( abs(opinion - sapply(opinion_or_message_vector, function(x) { unlist(x) })) )
          },
          Optimized = {
-           mean(message - sapply(opinion_or_message_vector, function(x) { abs(unlist(x)) }) )
+           mean( abs(message - sapply(opinion_or_message_vector, function(x) { unlist(x) })) )
          })
   
   return(distance)
@@ -249,3 +259,41 @@ distance_switch <- function(opinion, message, assumption, action) {
 }
 
 vec_distance_switch <- Vectorize(distance_switch)
+
+### retrieve messages
+
+get_message <- function(id, best) {
+  
+  message <- switch(best,
+                    "Unoptimized" = {
+                      message_metrics_table %>%
+                        select(sender, opinion_from) %>%
+                        filter(sender==id) %>%
+                        distinct() %>%
+                        select(opinion_from) %>%
+                        summarise(opinion_from = mean(opinion_from)) %>%
+                        as.numeric()
+                    },
+                    "Optimized" = {
+                      message_metrics_table %>%
+                        select(sender, message) %>%
+                        filter(sender==id) %>%
+                        distinct() %>%
+                        select(message) %>%
+                        summarise(message = mean(message)) %>%
+                        as.numeric()
+                    })
+    
+  return(message)
+
+}
+
+vec_get_message <- Vectorize(get_message)
+
+### get new opinion
+
+get_new_opinion <- function(id, sender) {
+  
+  filter(message_metrics_table, agent_id == sender)$
+  sum(opinion_to) / no_within
+}
