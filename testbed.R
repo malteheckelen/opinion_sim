@@ -102,8 +102,10 @@ actions_send <- message_metrics_table %>%
   mutate(util_score = distance - distance_to_past_messages - distance_to_past_opinions) %>%
   mutate(agent_id = sender) %>%
   select(agent_id, actions, util_score) %>%
-  distinct()
-
+  distinct() %>%
+  spread(actions, util_score) %>%
+  mutate(best_action = ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")) %>%
+  gather(actions, util_score, "Optimized":"Unoptimized")
 
 # Receiving
 agent_characteristics <- agent_characteristics %>%
