@@ -46,9 +46,27 @@ actions_send <- tibble(
   
 )
 
+receiving_table <- environment %>%
+  activate(edges) %>%
+  as_tibble() %>%
+  mutate(from_two = from) %>%
+  mutate(to_two = to) %>%
+  mutate(from = to_two) %>%
+  mutate(to = from_two) %>%
+  select(from, to)
+
+receiving_table <- environment %>%
+  activate(edges) %>%
+  as_tibble() %>%
+  rbind(receiving_table) %>%
+  inner_join(agent_characteristics, by=c("from" = "agent_id")) %>% 
+  mutate(opinion_from = opinion) %>%
+  select(from, to, opinion_from) %>%
+  mutate(assumption_to = vec_produce_initial_assumption(from, to))
+
 ### Distances
 
-message_part <- environment %>%
+message_metrics_table <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
   mutate(from_two = from) %>%
@@ -61,23 +79,23 @@ message_part <- environment %>%
 message_metrics_table <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
-  rbind(message_part) %>%
+  rbind(message_metrics_table) %>%
   inner_join(agent_characteristics, by=c("from" = "agent_id")) %>% 
   mutate(opinion_from = opinion) %>%
-  mutate(assumption_to = opinion_from) %>% 
-  select(from, to, opinion_from, assumption_to)
+  select(from, to, opinion_from)
 
 # make matrix of all possible optimized messages
-message_matrix <- outer(agent_characteristics$opinion, agent_characteristics$opinion, produce_altered_message) # works
-row.names(message_matrix) <- seq(1, no_agents, 1)
-colnames(message_matrix) <- seq(1, no_agents, 1)
+message_matrix <- outer(receiving_table$opinion_from, receiving_table$assumption_to, produce_altered_message) # works
+row.names(message_matrix) <- receiving_table$from
+colnames(message_matrix) <- receiving_table$to
 
 messages <- message_matrix %>% 
   as_tibble() %>% 
   mutate(sender = as.numeric(row.names(message_matrix))) %>% 
-  gather(receiver, message, "1":as.character(length(colnames(message_matrix))) ) %>%
+  gather(receiver, message, "1":as.character(no_agents) ) %>%
   group_by(sender) %>%
   mutate(message = mean(message)) %>%
+  ungroup() %>%
   select(sender, message) %>%
   distinct()
 
@@ -88,7 +106,7 @@ message_metrics_table <- messages %>%
   inner_join(actions_send, by=c("sender" = "agent_id")) %>%
   mutate(distance_to_past_messages = vec_distance_to_past(past_messages, opinion_from, message, actions)) %>%
   mutate(distance_to_past_opinions = vec_distance_to_past(past_opinions, opinion_from, message, actions)) %>% # works
-  mutate(distance = vec_distance_switch(opinion_from, message, assumption_to, actions)) %>%
+  mutate(distance = vec_distance_switch(opinion_from, message, filter(receiving_table, from == from, to == to)$assumption_to, action=actions)) %>%
   group_by(sender) %>%
   mutate(distance = mean(distance)) %>%
   ungroup() %>%
@@ -114,6 +132,7 @@ message_metrics_table <- actions_send %>%
   mutate(assumption_to = vec_get_message(to, best_action)) %>%
   distinct() %>%
   mutate(within_epsilon = distance < epsilon) # works
+
 sum(opinion_to) / no_within
 
 # Receiving
@@ -121,14 +140,11 @@ agent_characteristics <- agent_characteristics %>%
   inner_join(message_metrics_table, by=c("agent_id" = "sender")) %>%
   group_by(agent_id) %>%
   mutate(no_within = sum(within_epsilon)) %>%
-  filter(within_epsilon == TRUE) %>%
   filter(actions == best_action) %>%
-  mutate(opinion = ifelse(no_within != 0, vec_get_new_opinion(agent_id, to), opinion)) %>%
+  mutate(doubt = 1 - distance_to_past_messages) %>%
+  mutate(opinion = ifelse(no_within != 0, mean(assumption_to * doubt) / no_within, opinion)) %>%
   ungroup() %>%
-  select(agent_id, opinion) %>% 
-  full_join(agent_characteristics, by="agent_id") %>% 
-  mutate(opinion = coalesce(opinion.x, opinion.y)) %>%
-  select(agent_id, opinion) %>%
+  select(agent_id, opinion, neighborhood, nbh_size) %>%
   distinct()
 
 # STEP
@@ -294,6 +310,7 @@ vec_get_message <- Vectorize(get_message)
 
 get_new_opinion <- function(id, sender) {
   
-  filter(message_metrics_table, agent_id == sender)$
+  (1 - past) * 
+  filter(receiving_table, agent_id == sender)$
   sum(opinion_to) / no_within
 }
