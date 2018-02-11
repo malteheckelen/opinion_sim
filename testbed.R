@@ -46,9 +46,6 @@ actions_send <- tibble(
   
 )
 
-
-
-
 ### Distances
 
 distances_part <- environment %>%
