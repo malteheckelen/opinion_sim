@@ -15,7 +15,7 @@ defineModule(sim, list(
   reqdPkgs = list("dplyr"),
   inputObjects = bind_rows(
     expectsInput("agent_characteristics", "tbl_df", "The characteristics of each agent."),
-    expectsInput("distances_table", "tbl_df", "The table of opinion distances.")
+    expectsInput("data_collection_prompt", "logical", "A prompt to collect data.")
   )
 ))
 

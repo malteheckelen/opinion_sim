@@ -30,20 +30,21 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "small_world", "hegselmann_krause", "data_collection")
+modules <- list("basic_setup", "small_world", "rc_model", "data_collection")
 
-times <- list(start = 0, end = 500)
+times <- list(start = 0, end = 3)
 
 parameters <- list(
   basic_setup = list(
-    no_agents = 100
+    no_agents = 10
     ),
   small_world = list(
     dim = 1,
     rewire_p = 0.5
   ),
-  hegselmann_krause = list(
-    epsilon = 0.15
+  rc_model = list(
+    epsilon = 0.15,
+    memory_depth = 3
   )
 )
 
@@ -51,4 +52,6 @@ paths <- getPaths()
 
 SIM <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
-out <- spades(SIM)
+profvis({
+  out <- spades(SIM)
+})
