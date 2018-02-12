@@ -133,9 +133,8 @@ message_metrics_table <- actions_send %>%
   distinct() %>%
   mutate(within_epsilon = distance < epsilon) # works
 
-sum(opinion_to) / no_within
-
 # Receiving
+
 agent_characteristics <- agent_characteristics %>%
   inner_join(message_metrics_table, by=c("agent_id" = "sender")) %>%
   group_by(agent_id) %>%
@@ -149,54 +148,7 @@ agent_characteristics <- agent_characteristics %>%
 
 # STEP
 
-# make matrix of all possible optimized messages
-message_matrix <- outer(agent_characteristics$opinion, agent_characteristics$opinion, produce_altered_message) # works
-row.names(message_matrix) <- seq(1, no_agents, 1)
-colnames(message_matrix) <- seq(1, no_agents, 1)
 
-message_tibble <- message_matrix %>% 
-  as_tibble() %>% 
-  mutate(sender = row.names(message_matrix)) %>% 
-  gather(receiver, message, "1":as.character(length(colnames(message_matrix))) ) # works
-
-### Distances
-
-distances_part <- environment %>%
-  activate(edges) %>%
-  as_tibble() %>%
-  mutate(from_two = from) %>%
-  mutate(to_two = to) %>%
-  mutate(from = to_two) %>%
-  mutate(to = from_two) %>%
-  select(from, to)
-
-# create a distance table
-distances_table <- environment %>%
-  activate(edges) %>%
-  as_tibble() %>%
-  rbind(distances_part) %>%
-  inner_join(agent_characteristics, by=c("from" = "agent_id")) %>% 
-  mutate(opinion_from = opinion) %>%
-  select(from, to, opinion_from) %>%
-  inner_join(agent_characteristics, by=c("to" = "agent_id")) %>%
-  mutate(opinion_to = opinion) %>% 
-  select(from, to, opinion_from, opinion_to) %>%
-  mutate(distance = opinion_from - opinion_to) %>%
-  mutate(distance = abs(distance)) %>%
-  mutate(within_epsilon = distance < 0.1)
-
-agent_characteristics <- agent_characteristics %>%
-  inner_join(distances_table, by=c("agent_id" = "from")) %>%
-  group_by(agent_id) %>%
-  mutate(no_within = sum(within_epsilon)) %>%
-  filter(within_epsilon == TRUE) %>%
-  mutate(opinion = ifelse(no_within != 0, sum(opinion_to) / no_within, opinion)) %>%
-  ungroup() %>%
-  select(agent_id, opinion) %>% 
-  full_join(agent_characteristics, by="agent_id") %>% 
-  mutate(opinion = coalesce(opinion.x, opinion.y)) %>%
-  select(agent_id, opinion) %>%
-  distinct()
 
 # FUNCTIONS
 
@@ -314,3 +266,4 @@ get_new_opinion <- function(id, sender) {
   filter(receiving_table, agent_id == sender)$
   sum(opinion_to) / no_within
 }
+
