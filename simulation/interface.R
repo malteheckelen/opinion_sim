@@ -52,6 +52,6 @@ paths <- getPaths()
 
 SIM <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
-profvis({
+#profvis({
   out <- spades(SIM)
-})
+#})

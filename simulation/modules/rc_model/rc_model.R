@@ -40,6 +40,7 @@ defineModule(sim, list(
 
 
 doEvent.rc_model <- function(sim, eventTime, eventType, debug = FALSE) {
+  
   switch(
     eventType,
     init = {
@@ -59,7 +60,9 @@ doEvent.rc_model <- function(sim, eventTime, eventType, debug = FALSE) {
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
   )
+  
   return(invisible(sim))
+  
 }
 
 rc_modelInit <- function(sim) {
@@ -77,27 +80,11 @@ rc_modelInit <- function(sim) {
   )
   
   print(time(sim))
-  sim$receiving_table <- sim$environment %>%
-    activate(edges) %>%
-    as_tibble() %>%
-    mutate(from_two = from) %>%
-    mutate(to_two = to) %>%
-    mutate(from = to_two) %>%
-    mutate(to = from_two) %>%
-    select(from, to)
-  
-  sim$receiving_table <- sim$environment %>%
-    activate(edges) %>%
-    as_tibble() %>%
-    rbind(sim$receiving_table) %>%
-    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>% 
-    mutate(opinion_from = opinion) %>%
-    select(from, to, opinion_from) %>%
-    mutate(assumption_to = sapply(opinion_from, function(x) { ifelse(rnorm(1, x, 0.2) < 0, 0, rnorm(1, x, 0.2)) } ))
-
   sim$message_metrics <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
+    data.table() %>%
+    setnames(old = c("from", "to"), new = c()) %>%
     mutate(from_two = from) %>%
     mutate(to_two = to) %>%
     mutate(from = to_two) %>%
@@ -110,13 +97,14 @@ rc_modelInit <- function(sim) {
     rbind(sim$message_metrics) %>%
     inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>% 
     mutate(opinion_from = opinion) %>%
-    select(from, to, opinion_from)
- 
+    select(from, to, opinion_from) %>%
+    mutate(assumption_to = sapply(opinion_from, function(x) { ifelse(rnorm(1, x, 0.2) < 0, 0, rnorm(1, x, 0.2)) } ))
+  
   # make matrix of all possible optimized messages
-  sim$message_matrix <- outer(sim$receiving_table$opinion_from, sim$receiving_table$assumption_to, produce_altered_message) # works
-  row.names(sim$message_matrix) <- sim$receiving_table$from
-  colnames(sim$message_matrix) <- sim$receiving_table$to
-
+  sim$message_matrix <- outer(sim$message_metrics$opinion_from, sim$message_metrics$assumption_to, produce_altered_message) # works
+  row.names(sim$message_matrix) <- sim$message_metrics$from
+  colnames(sim$message_matrix) <- sim$message_metrics$to
+  
   sim$messages <- sim$message_matrix %>% 
     as_tibble() %>% 
     mutate(from = as.numeric(row.names(sim$message_matrix))) %>% 
@@ -134,13 +122,13 @@ rc_modelInit <- function(sim) {
     inner_join(sim$actions_send, by=c("from" = "agent_id")) %>%
     mutate(distance_to_past_messages = vec_distance_to_past(past_messages, opinion_from, message, actions)) %>%
     mutate(distance_to_past_opinions = vec_distance_to_past(past_opinions, opinion_from, message, actions)) %>% # works
-    mutate(distance = vec_distance_switch(opinion_from, message, filter(sim$receiving_table, from == from, to == to)$assumption_to, action=actions)) %>%
-    group_by(from) %>%
-    mutate(distance = mean(distance)) %>%
-    ungroup() %>%
     mutate(distance_to_past_messages = abs(distance_to_past_messages)) %>%
     mutate(distance_to_past_opinions = abs(distance_to_past_opinions)) %>%
-    mutate(distance = abs(distance)) # works
+    mutate(distance = vec_distance_switch(opinion_from, message, assumption_to, action=actions)) %>%
+    group_by(from) %>%
+    mutate(distance = mean(distance)) %>%
+    mutate(distance = abs(distance)) %>% # works
+    ungroup()
   
   # Sending
   sim$actions_send <- sim$message_metrics %>%
@@ -156,22 +144,25 @@ rc_modelInit <- function(sim) {
     mutate(to = agent_id) %>%
     select(to, best_action) %>%
     distinct() %>%
-    inner_join(sim$message_metrics) %>%
-    mutate(assumption_to = vec_get_message(to, best_action)) %>%
-    distinct() %>%
-    mutate(within_epsilon = distance < params(sim)$rc_model$epsilon) # works
+    inner_join(sim$message_metrics) %>% 
+    mutate(assumption_to = filter(to == from)$message[1]) %>%
+    distinct() %>% # MAYBE I CAN FILTER WITH DATATABLE MORE EFFICIENTLY
+    mutate(within_epsilon = distance < params(sim)$rc_model$epsilon) %>%
+    group_by(from) %>%
+    mutate(no_within = sum(within_epsilon)) %>%
+    ungroup() %>%
+    mutate(doubt = 1 - distance_to_past_messages) %>%
+    mutate(numerator_elements = ifelse(within_epsilon==TRUE, assumption_to * doubt, 0)) %>%
+    mutate(numerator_mean = sum(numerator_elements)) %>%
+    mutate(opinion_from = numerator_mean / no_within)
   
   # Receiving
   
-  sim$agent_characteristics <- sim$agent_characteristics %>%
-    inner_join(sim$message_metrics, by=c("agent_id" = "from")) %>%
-    group_by(agent_id) %>%
-    mutate(no_within = sum(within_epsilon)) %>%
-    filter(actions == best_action) %>%
-    mutate(doubt = 1 - distance_to_past_messages) %>%
-    mutate(opinion = ifelse(no_within != 0, mean(assumption_to * doubt) / no_within, opinion)) %>%
-    ungroup() %>%
-    select(agent_id, opinion, neighborhood, nbh_size) %>%
+  sim$agent_characteristics <- sim$message_characteristics %>%
+    select(from, opinion_from) %>%
+    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>%
+    select(agent_id = from) %>%
+    select(opinion = opinion_from) %>%
     distinct()
   
   # past data update for next step
@@ -185,32 +176,18 @@ rc_modelInit <- function(sim) {
 
 rc_modelStep <- function(sim) {
   print(time(sim))
-  sim$receiving_table <- sim$receiving_table %>%
-    select(from, to, assumption_to) %>%
-    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>% 
-    select(from, to, opinion) %>%
-    inner_join(sim$message_metrics, by=c("to" = "from")) %>% 
-    filter(actions == best_action) %>%
-    mutate(assumption_to = message) %>%
-    select(from, to, opinion, assumption_to) %>%
-    mutate(opinion_from = opinion) %>%
-    select(-opinion) %>%
-    distinct() # works
-  
-  ### Distances
-  
+
   # create a distance table with initial assumptions
   sim$message_metrics <- sim$message_metrics %>%
-    select(from, to, past_messages, past_opinions) %>%
+    select(from, to, message, past_messages, past_opinions) %>%
     distinct() %>%
-    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>% 
-    mutate(opinion_from = opinion) %>%
-    select(from, to, opinion_from)
+    mutate(assumption_to = filter(to == from)$message[1]) %>%
+    select(-message) 
   
   # make matrix of all possible optimized messages
-  sim$message_matrix <- outer(sim$receiving_table$opinion_from, sim$receiving_table$assumption_to, produce_altered_message) # works
-  row.names(sim$message_matrix) <- sim$receiving_table$from
-  colnames(sim$message_matrix) <- sim$receiving_table$to
+  sim$message_matrix <- outer(sim$message_metrics$opinion_from, sim$message_metrics$assumption_to, produce_altered_message) # works
+  row.names(sim$message_matrix) <- sim$message_metrics$from
+  colnames(sim$message_matrix) <- sim$message_metrics$to
   
   sim$messages <- sim$message_matrix %>% 
     as_tibble() %>% 
@@ -224,18 +201,15 @@ rc_modelStep <- function(sim) {
   
   sim$message_metrics <- sim$messages %>% 
     inner_join(sim$message_metrics, by=c("from" = "from")) %>%
-    mutate(past_messages = sapply(opinion_from, function(x) { list(x) } )) %>%
-    mutate(past_opinions = sapply(opinion_from, function(x) { list(x) } )) %>%
-    inner_join(sim$actions_send, by=c("from" = "agent_id")) %>%
     mutate(distance_to_past_messages = vec_distance_to_past(past_messages, opinion_from, message, actions)) %>%
     mutate(distance_to_past_opinions = vec_distance_to_past(past_opinions, opinion_from, message, actions)) %>% # works
-    mutate(distance = vec_distance_switch(opinion_from, message, filter(receiving_table, from == from, to == to)$assumption_to, action=actions)) %>%
-    group_by(from) %>%
-    mutate(distance = mean(distance)) %>%
-    ungroup() %>%
     mutate(distance_to_past_messages = abs(distance_to_past_messages)) %>%
     mutate(distance_to_past_opinions = abs(distance_to_past_opinions)) %>%
-    mutate(distance = abs(distance)) # works
+    mutate(distance = vec_distance_switch(opinion_from, message, assumption_to, action=actions)) %>%
+    group_by(from) %>%
+    mutate(distance = mean(distance)) %>%
+    mutate(distance = abs(distance)) %>%
+    ungroup() # works
   
   # Sending
   sim$actions_send <- sim$message_metrics %>%
@@ -252,21 +226,24 @@ rc_modelStep <- function(sim) {
     select(to, best_action) %>%
     distinct() %>%
     inner_join(sim$message_metrics) %>%
-    mutate(assumption_to = vec_get_message(to, best_action)) %>%
+    mutate(assumption_to = filter(to == from)$message[1]) %>%
     distinct() %>%
-    mutate(within_epsilon = distance < params(sim)$rc_model$epsilon) # works
+    mutate(within_epsilon = distance < params(sim)$rc_model$epsilon) %>%
+    group_by(agent_id) %>%
+    mutate(no_within = sum(within_epsilon)) %>%
+    ungroup() %>%
+    mutate(doubt = 1 - distance_to_past_messages) %>%
+    mutate(numerator_elements = ifelse(within_epsilon==TRUE, assumption_to * doubt, 0)) %>%
+    mutate(numerator_mean = sum(numerator_elements)) %>%
+    mutate(opinion_from = numerator_mean / no_within)
   
   # Receiving
   
-  sim$agent_characteristics <- sim$agent_characteristics %>%
-    inner_join(sim$message_metrics, by=c("agent_id" = "from")) %>%
-    group_by(agent_id) %>%
-    mutate(no_within = sum(within_epsilon)) %>%
-    filter(actions == best_action) %>%
-    mutate(doubt = 1 - distance_to_past_messages) %>%
-    mutate(opinion = ifelse(no_within != 0, mean(assumption_to * doubt) / no_within, opinion)) %>%
-    ungroup() %>%
-    select(agent_id, opinion, neighborhood, nbh_size) %>%
+  sim$agent_characteristics <- sim$message_characteristics %>%
+    select(from, opinion_from) %>%
+    inner_join(sim$agent_characteristics, by=c("from" = "agent_id")) %>%
+    select(agent_id = from) %>%
+    select(opinion = opinion_from) %>%
     distinct()
   
   # past data update for next step
