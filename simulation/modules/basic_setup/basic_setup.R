@@ -50,6 +50,7 @@ basic_setupInit <- function(sim) {
     "uniform" = {
       
       sim$agent_characteristics$opinion <- runif(sim$no_agents, 0, 1)
+      #plot(density(sim$agent_characteristics$opinion))
       
     },
     "normal" = {
