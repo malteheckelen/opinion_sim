@@ -32,11 +32,11 @@ setPaths(cachePath = "cache",
 
 modules <- list("basic_setup", "small_world", "rc_model", "data_collection")
 
-times <- list(start = 0, end = 3)
+times <- list(start = 0, end = 100)
 
 parameters <- list(
   basic_setup = list(
-    no_agents = 10
+    no_agents = 100
     ),
   small_world = list(
     dim = 1,

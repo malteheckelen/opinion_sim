@@ -14,8 +14,7 @@ defineModule(sim, list(
   documentation = list("README.txt", "data.collection.Rmd"),
   reqdPkgs = list("dplyr"),
   inputObjects = bind_rows(
-    expectsInput("agent_characteristics", "tbl_df", "The characteristics of each agent."),
-    expectsInput("data_collection_prompt", "logical", "A prompt to collect data.")
+    expectsInput("agent_characteristics", "data.table", "The characteristics of each agent.")
   )
 ))
 
@@ -44,10 +43,10 @@ doEvent.data_collection <- function(sim, eventTime, eventType, debug=FALSE) {
 data_collectionInit <- function(sim) {
   
   sim$data_collect <- tibble(
-    agent_id = sim$agent_characteristics$agent_id,
-    opinions = sim$agent_characteristics$opinion,
+    agent_id = sim$agent_characteristics[ , agent_id],
+    opinions = sim$agent_characteristics[ , opinion],
     time = time(sim)
-  )
+  ) %>% data.table()
   
   return(invisible(sim))
 }
@@ -58,11 +57,12 @@ data_collectionStep <- function(sim) {
     agent_id = sim$agent_characteristics$agent_id,
     opinions = sim$agent_characteristics$opinion,
     time = time(sim)
-  )
+  ) %>% data.table()
   
   sim$data_collect <- temp %>%
     rbind(sim$data_collect)
   
   return(invisible(sim))
+  
 }
     

@@ -26,7 +26,7 @@ agent_characteristics <- environment %>%
   as_tibble() %>%
   data.table() %>%
   .[, .(agent_id, neighborhood, nbh_size )] %>%
-  merge(agent_characteristics, by.x = "agent_id", by.y = "agent_id")
+  .[copy(data.table(agent_characteristics)), on = c("agent_id")]
 
 
 # INIT
@@ -58,10 +58,10 @@ messages <- environment %>%
   activate(edges) %>%
   as_tibble() %>%
   data.table() %>%
-  rbind(messages) %>%
-  merge(agent_characteristics[, .(agent_id, opinion)], by.x = "from", by.y = "agent_id") %>%
+  rbind(messages) %>% 
+  .[copy(agent_characteristics[, .(agent_id, opinion)]), nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
   setnames("opinion", "opinion_from") %>%
-  .[, assumption_to := vec_rnorm(1, .[, opinion_from], 0.1)] 
+  .[, assumption_to := vec_rnorm(1, .[, opinion_from], 0.1)]
 
 
 # make matrix of all possible optimized messages
@@ -80,49 +80,59 @@ messages <- copy(message_matrix) %>%
   .[ to != from] %>%
   setkey("from") %>%
   unique() %>%
-  merge(unique(messages), by.x = c("from", "to"), by.y = c("from", "to"), allow.cartesian = TRUE) %>%
-  .[, past_messages := sapply(opt_message, function(x) {list(x)} )] %>% 
-  .[, past_opinions := sapply(opinion_from, function(x) {list(x)} )]
+  .[ , from := as.integer(from)] %>%
+  .[ , to := as.integer(to)] %>%
+  .[copy(unique(messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE]
+
+# in future rounds, past_messages will be assigned too
+discourse_memory <- copy(messages) %>%
+  .[ , past_messages := sapply(opt_message, function(x) {list(x)} )] %>% # this will get reassigned at end of init
+  .[ , past_opinions := sapply(opinion_from, function(x) {list(x)} )] %>%
+  .[ , .(from, past_opinions)] %>%
+  as_tibble() %>% # unique() does not yet work for data.table with list columns -> casting to tibble for this
+  distinct() %>%
+  data.table()
 
 # Sending
 actions_send <- copy(messages) %>% 
-  merge(actions_send, by.x = c("from"), by.y = c("agent_id"), allow.cartesian = TRUE) %>%
-  .[, distance_to_past_messages := mapply(function(a,b,c,k) {
-    switch(k,
-           "Unoptimized" = {
-             mean(
-               sapply(a, function(x) {
-                 abs(x - c)
-               })
-             )
-           },
-           "Optimized" = {
-             mean(
-               sapply(a, function(x) {
-                 abs(x - b)
-               })
-             )
-           }
-    )
-  }, a=past_messages, b=opt_message, c=opinion_from, k=actions)] %>%
-  .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
-    switch(k,
-           "Unoptimized" = {
-             mean(
-               sapply(a, function(x) {
-                 abs(x - c)
-               })
-             )
-           },
-           "Optimized" = {
-             mean(
-               sapply(a, function(x) {
-                 abs(x - b)
-               })
-             )
-           }
-    )
-  }, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
+  .[copy(actions_send), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE] %>%
+  .[copy(discourse_memory), on = c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
+  #.[, distance_to_past_messages := mapply(function(a,b,c,k) {
+  #  switch(k,
+  #         "Unoptimized" = {
+  #           mean(
+  #             sapply(a, function(x) {
+  #               abs(x - c)
+  #             })
+  #           )
+  #         },
+  #         "Optimized" = {
+  #           mean(
+#             sapply(a, function(x) {
+#               abs(x - b)
+#             })
+#           )
+#         }
+#  )
+#}, a=past_messages, b=opt_message, c=opinion_from, k=actions)] %>%
+.[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+  switch(k,
+         "Unoptimized" = {
+           mean(
+             sapply(a, function(x) {
+               abs(x - c)
+             })
+           )
+         },
+         "Optimized" = {
+           mean(
+             sapply(a, function(x) {
+               abs(x - b)
+             })
+           )
+         }
+  )
+}, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
   .[, distance_message_opinion := mapply(function(a,b,k) {
     switch(k,
            "Unoptimized" = {
@@ -143,20 +153,14 @@ actions_send <- copy(messages) %>%
            }
     )
   }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
-  .[, util_score := distance_to_past_messages - distance_to_past_opinions - distance_message_opinion - distance_message_assumption]
-
-for_receive_temp <- copy(actions_send[, .(from, actions, distance_to_past_messages)]) %>%
-  setkey("from") %>%
-  unique()
-
-actions_send <- actions_send %>%
+  .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
+  .[ , util_score := distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
   setnames("from", "agent_id") %>%
   .[,.(agent_id, actions, util_score)] %>%
   setkey("agent_id") %>%
   unique() %>%
   .[, util_score := sum(util_score), by=c("agent_id", "actions")] %>% 
-  setkey("agent_id") %>%
-  unique() %>% 
+  unique() %>%
   dcast(agent_id ~ actions, value.var = "util_score") %>% 
   .[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")] %>% 
   melt( id.vars = c("agent_id", "best_action"),
@@ -164,92 +168,86 @@ actions_send <- actions_send %>%
         variable.name = "actions",
         value.name = "util_score" ) 
 
-messages <- copy(actions_send) %>%
-  merge(messages, by.x = c("agent_id"), by.y = c("from"), allow.cartesian = TRUE) %>%
+discourse_memory <- copy(actions_send) %>%
+  .[copy(messages), on = c("agent_id" = "from"), nomatch = 0L, allow.cartesian = TRUE] %>%
   setnames("agent_id", "from") %>%
   setkey("from") %>%
   unique() %>%
+  .[copy(discourse_memory), on = c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
   .[actions==best_action] %>%
-  .[ , past_messages := ifelse(lengths(past_messages) < 3, 
-                               ifelse(.[ , best_action] == "Unoptimized",
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x), y))
-                                      }, x=past_messages, y=opinion_from),
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x), y))
-                                      }, x=past_messages, y=opt_message)),
-                               ifelse(.[ , best_action] == "Unoptimized",
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x)[1:2], y))
-                                      }, x=past_messages, y=opinion_from),
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x)[1:2], y))
-                                      }, x=past_messages, y=opt_message)
-                               )
-  )] %>%
-  .[ , past_opinions := ifelse(lengths(past_opinions) < 3, 
-                               ifelse(.[ , best_action] == "Unoptimized",
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x), y))
-                                      }, x=past_opinions, y=opinion_from),
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x), y))
-                                      }, x=past_opinions, y=opt_message)),
-                               ifelse(.[ , best_action] == "Unoptimized",
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x)[1:2], y))
-                                      }, x=past_opinions, y=opinion_from),
-                                      mapply(function(x, y) {
-                                        list(c(unlist(x)[1:2], y))
-                                      }, x=past_opinions, y=opt_message)
-                               )
-  )]
+  .[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
+                               list(opinion_from[[1]]),
+                               list(opt_message[[1]]))] %>%
+  #.[ , past_messages := ifelse(lengths(past_messages) < 3, 
+  #                             ifelse(.[ , best_action] == "Unoptimized",
+  #                                    mapply(function(x, y) {
+  #                                      list(c(unlist(x), y))
+  #                                    }, x=past_messages, y=opinion_from),
+  #                                    mapply(function(x, y) {
+  #                                      list(c(unlist(x), y))
+  #                                    }, x=past_messages, y=opt_message)),
+  #                             ifelse(.[ , best_action] == "Unoptimized",
+  #                                    mapply(function(x, y) {
+  #                                      list(c(unlist(x)[1:2], y))
+#                                    }, x=past_messages, y=opinion_from),
+#                                    mapply(function(x, y) {
+#                                      list(c(unlist(x)[1:2], y))
+#                                    }, x=past_messages, y=opt_message)
+#                             )
+#)] %>%
+.[ , past_opinions := ifelse(lengths(past_opinions) < 3,
+                             mapply(function(x, y) {
+                               list(c(unlist(x), y))
+                             }, x=past_opinions, y=opinion_from),
+                             mapply(function(x, y) {
+                               list(c(unlist(x)[1:2], y))
+                             }, x=past_opinions, y=opinion_from)
+)
+] %>%
+  .[ , .(from, to, past_messages, past_opinions)]
 
-messages <- messages %>% setkey(to)
-actions_send <- actions_send %>% setkey(agent_id)
+
 messages <- copy(messages) %>%
   setnames(old=c("opinion_from", "opt_message"), new=c("opinion_from_y", "opt_message_y")) %>%
   unique() %>%
   setnames(old = c("from", "to"), new = c("to", "from")) %>% 
-  .[, to := as.factor(to)] %>%
-  .[, .(to, opinion_from_y, opt_message_y)] %>%
-  .[messages, on="to", allow.cartesian=TRUE] %>% # WORKS
-  #merge(unique(messages), by.x = c("to"), by.y = c("to"), allow.cartesian = TRUE) %>%
-  setkey(from) %>%
-  unique() %>%
-  .[actions_send[, .(agent_id, best_action)]] %>%
-  #merge(unique(actions_send[, .(agent_id, best_action)]), by.x = c("from"), by.y = c("agent_id")) %>%
-  .[ , assumption_to := ifelse(.[, best_action] == "Unoptimized", opinion_from_y, message_y)] %>% 
+  .[ , .(to, opinion_from_y, opt_message_y)] %>%
+  .[messages, on="to", nomatch=0L, allow.cartesian=TRUE] %>% # WORKS
+  .[actions_send[, .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>%
+  .[ , assumption_to := ifelse(.[, best_action] == "Unoptimized", opinion_from_y, opt_message_y)] %>% 
   .[ , -c("opinion_from_y", "opt_message_y")] %>%
   setkey("from") %>%
   unique() 
- 
+
 # Receiving
 
 agent_characteristics <- copy(messages) %>%
-  merge(for_receive_temp, by=c("from"), allow.cartesian = TRUE) %>% 
+  .[discourse_memory, on=c("from"="to"), nomatch = 0L, allow.cartesian = TRUE] %>% 
   .[best_action == actions] %>% 
-  .[ , .(from, distance_to_past_messages)] %>%
-  .[ , from := as.factor(from)] %>%
-  setnames("from", "to") %>%
-  setkey("to") %>%
-  unique() %>%
-  .[messages] %>%
-  merge(unique(messages), by.x = c("to"), by.y = c("to")) %>%
+  .[, distance_to_past_messages := mapply(function(a,b) {
+    mean(
+      sapply(a, function(x) {
+        abs(x - b)
+      })
+    )
+  }, a=past_messages, b=assumption_to)] %>%
   .[ , within_epsilon := abs(opinion_from - assumption_to) < epsilon] %>%
   .[ , no_within := sum(within_epsilon), by=from] %>%
   .[ , doubt := (1 - distance_to_past_messages)] %>%
   .[ , opinion := ifelse( no_within != 0, mean(assumption_to * doubt) / no_within, opinion_from ) ] %>%
-  setnames("opinion_from", "opinion") %>%
-  .[ , .(from, opinion)] %>%
-  setkey("from") %>%
-  unique() %>%
   setnames("from", "agent_id") %>%
-  merge(agent_characteristics[ , -c("opinion")], by=c("agent_id")) %>% print()
+  .[ , .(agent_id, opinion)] %>%
+  setkey("agent_id") %>%
+  unique() %>%
+  .[agent_characteristics[, -"opinion"], on = c("agent_id"), nomatch = 0L]
 
-# prep for next step
+test <- copy(discourse_memory) %>% .[ , past_messages := as.character(past_messages) ] %>% .[ , past_opinions := as.character(past_opinions) ]
 
-
+test_two <- copy(test) %>% 
+  unique() %>% 
+  .[ , past_messages := list(past_messages)] %>%
+  .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] #%>% 
+  print()
 
 # STEP
 

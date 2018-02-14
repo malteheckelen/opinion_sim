@@ -14,7 +14,7 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "lattice.Rmd"),
-  reqdPkgs = list("igraph", "tidygraph", "dplyr"),
+  reqdPkgs = list("igraph", "tidygraph", "dplyr", "data.table"),
   parameters = bind_rows(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("dim", "numeric", 1, NA, NA, "The dimension of the starting lattice."),
@@ -56,8 +56,9 @@ small_world_Init <- function(sim) {
     mutate(neighborhood = local_members(mindist = 1)) %>%
     mutate(nbh_size = local_size(mindist = 1)) %>%
     as_tibble() %>%
-    select(agent_id, neighborhood, nbh_size) %>%
-    inner_join(sim$agent_characteristics)
+    data.table() %>%
+    .[, .(agent_id, neighborhood, nbh_size )] %>%
+    .[copy(data.table(agent_characteristics)), on = c("agent_id")]
   
 }
 
