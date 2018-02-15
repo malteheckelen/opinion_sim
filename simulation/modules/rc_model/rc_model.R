@@ -25,7 +25,10 @@ defineModule(sim, list(
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
-    defineParameter("memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember messages and opinions for.")
+    defineParameter("other_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which other agents to have varying opinions over time."),
+    defineParameter("self_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which the agent himself has varying opinions over time."),
+    defineParameter("message_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember messages for."),
+    defineParameter("opinion_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember opinions for.")
     ),
   inputObjects = bind_rows(
     expectsInput("environment", "tbl_graph", "The environment for the agents"),
@@ -196,8 +199,8 @@ rc_modelInit <- function(sim) {
             measure.vars = c("Optimized", "Unoptimized"),
             variable.name = "actions",
             value.name = "util_score" ) 
-  actions <<- sim$actions_send %>%
-    .[messages, on=c("agent_id" = "from"), nomatch=0L, allow.cartesian=TRUE]
+  #actions <<- sim$actions_send %>%
+  #  .[messages, on=c("agent_id" = "from"), nomatch=0L, allow.cartesian=TRUE]
   sim$discourse_memory <- copy(sim$actions_send) %>%
     .[copy(sim$messages), on = c("agent_id" = "from"), nomatch = 0L, allow.cartesian = TRUE] %>%
     setnames("agent_id", "from") %>%
@@ -208,12 +211,12 @@ rc_modelInit <- function(sim) {
     .[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
                                  list(opinion_from[[1]]),
                                  list(opt_message[[1]]))] %>%
-    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$memory_depth,
+    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
                                  mapply(function(x, y) {
                                    list(c(unlist(x), y))
                                  }, x=past_opinions, y=opinion_from),
                                  mapply(function(x, y) {
-                                   list(c(unlist(x)[1:params(sim)$rc_model$memory_depth], y))
+                                   list(c(unlist(x)[1:params(sim)$rc_model$opinion_memory_depth], y))
                                  }, x=past_opinions, y=opinion_from)
     )
     ] %>%
@@ -238,30 +241,31 @@ rc_modelInit <- function(sim) {
     unique() 
   
   # Receiving
-  
+
   sim$opinion_updating <- copy(sim$messages) %>%
-    .[sim$discourse_memory, on=c("from"="to"), nomatch = 0L, allow.cartesian = TRUE] %>% 
+    .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>% 
     .[best_action == actions] %>%
-    #.[ , distance_to_past_messages := mapply(function(a,b) {
-    #  mean(
-    #    sapply(a, function(x) {
-    #      abs(x - b)
-    #    })
-    #  )
-    #}, a=past_messages, b=assumption_to)] %>% 
+    .[ , distance_to_past_opinions := mapply(function(a,b) {
+      mean(
+        sapply(a, function(x) {
+          abs(x - b)
+        })
+      )
+    }, a=past_opinions, b=assumption_to)] %>% 
     .[ , within_epsilon := abs(opinion_from - assumption_to) < params(sim)$rc_model$epsilon] %>%
-    .[ , no_within := sum(within_epsilon), by=from] %>%
-    #.[ , doubt := distance_to_past_messages] ->> diagnose %>% 
-    .[ within_epsilon == TRUE ] %>%
-    .[ , opinion_y := ifelse( no_within != 0, sum(assumption_to) / no_within, opinion_from ), by=from ] %>%
+    .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] %>%  #.[ , self_inconsistent] ->> self_inconsistent
+    .[ within_epsilon == TRUE & self_consistent == TRUE ] %>%
+    .[ , sum_assumptions := sum(assumption_to), by=from] %>%
+    .[ , denominator := .N, by=from ] %>%
+    .[ , opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
     setnames("from", "agent_id") %>%
     .[ , .(agent_id, opinion_y)] %>%
     setkey("agent_id") %>%
-    unique() ->> after_updating
-  before_merge <<- sim$agent_characteristics
+    unique() #->> after_updating
+  #before_merge <<- sim$agent_characteristics
   sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
     .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
-    .[ , -c("opinion_y")] ->> after_merge
+    .[ , -c("opinion_y")] #->> after_merge
 
   sim$messages <- sim$messages %>% 
     .[best_action == actions] %>% 
@@ -275,13 +279,13 @@ rc_modelInit <- function(sim) {
 rc_modelStep <- function(sim) {
   print(time(sim))
   
-  mat <<- sim$message_matrix
-  mess <<- sim$messages
-  ag_car <<- sim$agent_characteristics
+  #mat <<- sim$message_matrix
+  #mess <<- sim$messages
+  #ag_car <<- sim$agent_characteristics
   sim$messages <- sim$messages %>%
     .[copy(sim$agent_characteristics[, .(agent_id, opinion)]), nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from") %>%
-    .[ , assumption_to := vec_rnorm(1, .[, opinion_from], 0.1)]
+    .[ , assumption_to := vec_rnorm(1, .[ , opinion_from], 0.1)]
   
   # make matrix of all possible optimized messages
   sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) # works
@@ -385,7 +389,7 @@ rc_modelStep <- function(sim) {
     unique() %>%
     .[copy(sim$discourse_memory), on = c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
     .[actions==best_action] %>%
-    .[ , past_messages := ifelse(lengths(past_messages) < params(sim)$rc_model$memory_depth, 
+    .[ , past_messages := ifelse(lengths(past_messages) < params(sim)$rc_model$message_memory_depth, 
                                  ifelse(.[ , best_action] == "Unoptimized",
                                         mapply(function(x, y) {
                                           list(c(unlist(x), y))
@@ -402,7 +406,7 @@ rc_modelStep <- function(sim) {
                                         }, x=past_messages, y=opt_message)
                                  )
     )] %>%
-    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$memory_depth,
+    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
                                  mapply(function(x, y) {
                                    list(c(unlist(x), y))
                                  }, x=past_opinions, y=opinion_from),
@@ -432,9 +436,9 @@ rc_modelStep <- function(sim) {
     unique() 
   
   # Receiving
-  
+  #disc_mem <<- sim$discourse_memory
   sim$opinion_updating <- copy(sim$messages) %>%
-    .[sim$discourse_memory, on=c("from"="to"), nomatch = 0L, allow.cartesian = TRUE] %>% 
+    .[sim$discourse_memory, on=c("from"="to"), nomatch = 0L, allow.cartesian = TRUE] %>% #->> opp_up
     .[best_action == actions] %>% 
     .[ , distance_to_past_messages := mapply(function(a,b) {
       max(
@@ -442,21 +446,32 @@ rc_modelStep <- function(sim) {
           abs(x - b)
         })
       )
-    }, a=past_messages, b=assumption_to)] %>%
+    }, a=past_messages, b=assumption_to)] %>% #.[ , distance_to_past_messages] %>% ->> distance_to_past_messages
+    .[ , -c("past_messages", "past_opinions")] %>%
+    .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
+    .[ , distance_to_past_opinions := mapply(function(a,b) {
+      max(
+        sapply(a, function(x) {
+          abs(x - b)
+        })
+      )
+    }, a=past_opinions, b=assumption_to)] %>% #.[ , distance_to_past_opinions] ->> distance_to_past_opinions
     .[ , within_epsilon := abs(opinion_from - assumption_to) < params(sim)$rc_model$epsilon] %>%
-    .[ , no_within := sum(within_epsilon), by=from] %>%
-    .[ , doubt := runif(1, 0, 1) < distance_to_past_messages] %>% # .[ , doubt] ->> doubt
-    .[ within_epsilon == TRUE & doubt == FALSE ] %>%
-    .[ , opinion_y := ifelse( no_within != 0, sum(assumption_to) / no_within, opinion_from ), by=from ] %>%
+    .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] %>%  #.[ , self_inconsistent] ->> self_inconsistent
+    .[ , trust := distance_to_past_messages < params(sim)$rc_model$other_incons_tolerance] %>% # .[ , doubt] ->> doubt
+    .[ within_epsilon == TRUE & trust == TRUE & self_consistent == TRUE ] %>%
+    .[ , sum_assumptions := sum(assumption_to), by=from] %>%
+    .[ , denominator := .N, by=from ] %>%
+    .[ , opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
     setnames("from", "agent_id") %>%
     .[ , .(agent_id, opinion_y)] %>%
     setkey("agent_id") %>%
     unique()->> after_updating
-  before_merge <<- sim$agent_characteristics
+  #before_merge <<- sim$agent_characteristics
   
   sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
     .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
-    .[ , -c("opinion_y")] ->> after_merge
+    .[ , -c("opinion_y")] # ->> after_merge
   #fuck_me <<- sim$agent_characteristics
   sim$messages <- sim$messages %>% 
     .[best_action == actions] %>% 

@@ -41,11 +41,14 @@ parameters <- list(
     ),
   small_world = list(
     dim = 1,
-    rewire_p = 0.2
+    rewire_p = 0.6
   ),
   rc_model = list(
     epsilon = 0.15,
-    memory_depth = 10
+    other_incons_tolerance = 0.3,
+    self_incons_tolerance = 0.3,
+    opinion_memory_depth = 10,
+    message_memory_depth = 10
   )
 )
 
