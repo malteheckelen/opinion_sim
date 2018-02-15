@@ -7,4 +7,4 @@ out$data_collect %>%
   geom_point(size= 0.02, alpha=0.2, colour="dodgerblue3") +
   theme_bw()
 
-plot(density(out$data_collect[ time==0 , ]))
+plot(density(out$data_collect[ time==1 , opinions]))

@@ -84,7 +84,7 @@ rc_modelInit <- function(sim) {
     as_tibble() %>%
     data.table() %>%
     setnames(old = c("from", "to"), new = c("to", "from"))
-  
+  before_starting_state <<- sim$agent_characteristics
   sim$messages <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
@@ -92,14 +92,20 @@ rc_modelInit <- function(sim) {
     rbind(messages) %>% 
     .[copy(sim$agent_characteristics[, .(agent_id, opinion)]), nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from") %>%
-    .[ , assumption_to := vec_rnorm(1, .[, opinion_from], 0.1)]
+    .[ , assumption_to := opinion_from] ->> starting_state
+  # vec_rnorm(1, .[, opinion_from], 0.1)
+  starting_state_reduced <<- starting_state %>%
+    .[ , -c("to", "assumption_to")] %>%
+    setkey("from") %>%
+    unique()
+  
   #plot(density(sim$agent_characteristics$opinion))
   
   # make matrix of all possible optimized messages
   sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) # works
-  row.names(sim$message_matrix) <- sim$messages[, from]
-  colnames(sim$message_matrix) <- sim$messages[, to]
-  print(dim(sim$message_matrix))
+  row.names(sim$message_matrix) <- sim$messages[ , from]
+  colnames(sim$message_matrix) <- sim$messages[ , to]
+  mess_mat <<- sim$message_matrix
   sim$messages <- copy(sim$message_matrix) %>% 
     data.table() %>% 
     .[ , from := as.numeric(row.names(message_matrix))] %>% 
@@ -107,13 +113,18 @@ rc_modelInit <- function(sim) {
           measure.vars = as.character(seq(1, no_agents, 1)),
           variable.name = "to",
           value.name = "opt_message" ) %>%
-    .[ , opt_message := mean(opt_message), by = .(from)] %>%
     .[ to != from] %>%
     setkey("from") %>%
     unique() %>%
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
-    .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE]
+    .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
+    .[ , opt_message := mean(opt_message), by = .(from)] ->> messages_distro
+  
+  messages_distro_reduced <<- messages_distro %>%
+    .[ , .(from, opt_message)] %>%
+    setkey("from") %>%
+    unique()
   
   # in future rounds, past_messages will be assigned too
   sim$discourse_memory <- copy(sim$messages) %>%
@@ -185,7 +196,8 @@ rc_modelInit <- function(sim) {
             measure.vars = c("Optimized", "Unoptimized"),
             variable.name = "actions",
             value.name = "util_score" ) 
-  
+  actions <<- sim$actions_send %>%
+    .[messages, on=c("agent_id" = "from"), nomatch=0L, allow.cartesian=TRUE]
   sim$discourse_memory <- copy(sim$actions_send) %>%
     .[copy(sim$messages), on = c("agent_id" = "from"), nomatch = 0L, allow.cartesian = TRUE] %>%
     setnames("agent_id", "from") %>%
@@ -245,11 +257,11 @@ rc_modelInit <- function(sim) {
     setnames("from", "agent_id") %>%
     .[ , .(agent_id, opinion_y)] %>%
     setkey("agent_id") %>%
-    unique()
-  
+    unique() ->> after_updating
+  before_merge <<- sim$agent_characteristics
   sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
     .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
-    .[ , -c("opinion_y")]
+    .[ , -c("opinion_y")] ->> after_merge
 
   sim$messages <- sim$messages %>% 
     .[best_action == actions] %>% 
@@ -283,13 +295,13 @@ rc_modelStep <- function(sim) {
           measure.vars = as.character(seq(1, no_agents, 1)),
           variable.name = "to",
           value.name = "opt_message" ) %>%
-    .[ , opt_message := mean(opt_message), by = .(from)] %>%
     .[ to != from] %>%
     setkey("from") %>%
     unique() %>%
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
-    .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE]
+    .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
+    .[ , opt_message := mean(opt_message), by = .(from)]
   
   # Sending
   sim$actions_send <- copy(sim$messages) %>% 
@@ -316,14 +328,14 @@ rc_modelStep <- function(sim) {
     .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
       switch(k,
              "Unoptimized" = {
-               mean(
+               max(
                  sapply(a, function(x) {
                    abs(x - c)
                  })
                )
              },
              "Optimized" = {
-               mean(
+               max(
                  sapply(a, function(x) {
                    abs(x - b)
                  })
@@ -425,7 +437,7 @@ rc_modelStep <- function(sim) {
     .[sim$discourse_memory, on=c("from"="to"), nomatch = 0L, allow.cartesian = TRUE] %>% 
     .[best_action == actions] %>% 
     .[ , distance_to_past_messages := mapply(function(a,b) {
-      mean(
+      max(
         sapply(a, function(x) {
           abs(x - b)
         })
@@ -433,18 +445,18 @@ rc_modelStep <- function(sim) {
     }, a=past_messages, b=assumption_to)] %>%
     .[ , within_epsilon := abs(opinion_from - assumption_to) < params(sim)$rc_model$epsilon] %>%
     .[ , no_within := sum(within_epsilon), by=from] %>%
-    .[ , doubt := runif(1, 0, 1) < distance_to_past_messages] %>%
-    .[ within_epsilon == TRUE & doubt == TRUE ]  %>%
+    .[ , doubt := runif(1, 0, 1) < distance_to_past_messages] %>% # .[ , doubt] ->> doubt
+    .[ within_epsilon == TRUE & doubt == FALSE ] %>%
     .[ , opinion_y := ifelse( no_within != 0, sum(assumption_to) / no_within, opinion_from ), by=from ] %>%
     setnames("from", "agent_id") %>%
     .[ , .(agent_id, opinion_y)] %>%
     setkey("agent_id") %>%
-    unique()  
-  #fuck_me_once <<- sim$agent_characteristics
-  #fuck_me_twice <<- sim$opinion_updating
+    unique()->> after_updating
+  before_merge <<- sim$agent_characteristics
+  
   sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
-    .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>% #->> fuck_me_thrice
-    .[ , -c("opinion_y")]
+    .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
+    .[ , -c("opinion_y")] ->> after_merge
   #fuck_me <<- sim$agent_characteristics
   sim$messages <- sim$messages %>% 
     .[best_action == actions] %>% 

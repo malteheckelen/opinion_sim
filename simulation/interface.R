@@ -32,16 +32,16 @@ setPaths(cachePath = "cache",
 
 modules <- list("basic_setup", "small_world", "rc_model", "data_collection")
 
-times <- list(start = 0, end = 50)
+times <- list(start = 0, end = 100)
 
 parameters <- list(
   basic_setup = list(
     opinion_distribution = "uniform",
-    no_agents = 500
+    no_agents = 80
     ),
   small_world = list(
     dim = 1,
-    rewire_p = 0.5
+    rewire_p = 0.2
   ),
   rc_model = list(
     epsilon = 0.15,
@@ -53,6 +53,7 @@ paths <- getPaths()
 
 SIM <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
+set.seed(1234)
 #profvis({
   out <- spades(SIM)
 #})

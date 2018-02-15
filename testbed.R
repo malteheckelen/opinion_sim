@@ -241,14 +241,6 @@ agent_characteristics <- copy(messages) %>%
   unique() %>%
   .[agent_characteristics[, -"opinion"], on = c("agent_id"), nomatch = 0L]
 
-test <- copy(discourse_memory) %>% .[ , past_messages := as.character(past_messages) ] %>% .[ , past_opinions := as.character(past_opinions) ]
-
-test_two <- copy(test) %>% 
-  unique() %>% 
-  .[ , past_messages := list(past_messages)] %>%
-  .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] #%>% 
-  print()
-
 # STEP
 
 receiving_table <- receiving_table %>%
