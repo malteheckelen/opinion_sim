@@ -252,7 +252,26 @@ rc_modelInit <- function(sim) {
     .[ , receiver_business := .N, by = "to" ] # generate business
   
   sim$discourse_memory <- copy( sim$discourse_memory[ , -c("receiver_business") ] ) %>%
-    .[copy(sim$discourse_memory[ , .(to, business)]), on = c("from", "to")] # remerge it to correspond to receiver business
+    .[copy(sim$discourse_memory[ , .(to, business)]), on = c("from", "to")] %>% # remerge it with receiver_business-less version to correspond to receiver business
+    .[ , past_receiver_business := sapply(receiver_business, function(x) {list(x)} ) ] %>%
+    .[ , past_sender_business := sapply(sender_business, function(x) {list(x)} ) ] %>%
+    #.[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_model$energy_params_memory_depth,
+    #                                      mapply(function(x, y) {
+    #                                        list(c(unlist(x), y))
+    #                                      }, x=past_receiver_business, y=receiver_business),
+    #                                      mapply(function(x, y) {
+    #                                        list(c(unlist(x)[1:params(sim)$rc_model$opinion_memory_depth], y))
+    #                                      }, x=past_receiver_business, y=receiver_business)
+    #)] %>%
+    #.[ , past_sender_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_model$energy_params_memory_depth,
+    #                                      mapply(function(x, y) {
+    #                                        list(c(unlist(x), y))
+    #                                      }, x=past_sender_business, y=sender_business),
+    #                                      mapply(function(x, y) {
+    #                                        list(c(unlist(x)[1:params(sim)$rc_model$opinion_memory_depth], y))
+    #                                      }, x=past_sender_business, y=sender_business)
+    #)] %>%
+  
   
   # here we might run into a problem
   # in a line below, the rows that do not correspond to actions_send are filtered out
@@ -265,15 +284,14 @@ rc_modelInit <- function(sim) {
     .[ , .(to, opinion_from_y, opt_message_y)] %>%
     .[sim$messages, on="to", nomatch=0L, allow.cartesian=TRUE] # WORKS
   
-  # if we have a reduced row set, we can use that in opinion_updating, because that is the set of agents we want
-  # but those agents we want are in "to" and the associated variables are all for the "from" agent
-  # this down here might have to be renamed to be more clearly meant for opinion_updating
-  # then we need to do some switcheroos with the variables: we might have everything we need, but would also need to get
-  # the opinions for the from agents from agent_characteristics
-  sim$messages <- sim$messages %>%
-    merge(sim$actions_send, by.x = c("from"), by.y = c("agent_id"), all = TRUE) %>% # this will have lots of NAs in Step
-    .[sim$actions_send[, .(agent_id, actions, best_action)], on=c("from" = "agent_id"), allow.cartesian=TRUE] %>% # maybe leaving out nomatch works
-    .[ !is.na(best_action) , assumption_to := ifelse(.[, best_action] == "Unoptimized", opinion_from_y, opt_message_y)] %>% 
+  sim$messages <- copy(sim$messages) %>%
+    setnames(old=c("opinion_from", "opt_message"), new=c("opinion_from_y", "opt_message_y")) %>%
+    unique() %>%
+    setnames(old = c("from", "to"), new = c("to", "from")) %>% 
+    .[ , .(to, opinion_from_y, opt_message_y)] %>%
+    .[sim$messages, on="to", nomatch=0L, allow.cartesian=TRUE] %>% # WORKS
+    .[sim$actions_send[, .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>%
+    .[ , assumption_to := ifelse(.[, best_action] == "Unoptimized", opinion_from_y, opt_message_y)] %>% 
     .[ , -c("opinion_from_y", "opt_message_y")] %>%
     setkey("from") %>%
     unique() 
@@ -306,7 +324,7 @@ rc_modelInit <- function(sim) {
     setkey("agent_id") %>%
     unique()
   
-  sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
+  sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>% # produces NAs for not repoduced rows
     .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
     .[ , energy := (energy-4)] %>%
     .[ , -c("opinion_y")] 
