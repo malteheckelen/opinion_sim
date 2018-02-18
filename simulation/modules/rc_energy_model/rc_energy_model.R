@@ -173,7 +173,7 @@ rc_energy_modelInit <- function(sim) {
   # first, the set of rows is reduced to those that want to send
   # then the numbers are computed 
   if( length(sim$actions_overall[ best_action %in% c("Both", "Send") , best_action ] > 0 ) ) {
-    collies <<- colnames(sim$messages)
+
     sim$actions_send <- copy(sim$messages) %>% 
       .[copy(actions_overall), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
       .[ best_action == actions ] %>%
@@ -273,7 +273,7 @@ rc_energy_modelInit <- function(sim) {
       }, a=past_opinions, b=assumption_to)] %>% 
       setnames("opinion_from", "opinion") %>%
       setnames("opt_message", "message") %>%
-      .[ , .(from, to, opinion, message, past_messages, past_opinions)] %>%
+      .[ , .(from, to, opinion, message, past_messages, past_opinions, distance_to_past_opinions, sender_business, receiver_business)] %>%
       .[copy(sim$messages), on = c("from" = "from"), nomatch = 0L, allow.cartesian = TRUE] %>%
       .[ , past_messages := as.character(past_messages) ] %>%
       .[ , past_opinions := as.character(past_opinions) ] %>% 
@@ -284,14 +284,15 @@ rc_energy_modelInit <- function(sim) {
     # merge with list columns and make new var  with unequal dim dt: merge(test_one, test_two, by="id", all.x=TRUE)[ , val := ifelse(!is.na(val.y) & sapply(val.y, is.numeric), val.y, val.x)][ , -c("val.x", "val.y")]
     # merge and make new var with unequal dim dt: merge(test_one, test_two, by="id", all.x=TRUE)[ , val := ifelse(!is.na(val.y), val.y, val.x)][ , -c("val.x", "val.y")]
     
-    sim$discourse_memory <- copy( sim$discourse_memory[ , -c("receiver_business") ] ) %>%
-      .[copy(sim$discourse_memory[ , .(to, receiver_business)]), on = c("from", "to")] %>% # remerge it with receiver_business-less version to correspond to receiver business
-      .[ , past_receiver_business := ifelse( !is.na(receiver_business), sapply(receiver_business, function(x) {list(x)}, 0 ) ) ] %>%
-      .[ , past_sender_business := ifelse( !is.na(sender_business), sapply(sender_business, function(x) {list(x)}, 0 ) ) ] %>%
+    sim$discourse_memory <- copy(sim$discourse_memory[ , .(to, receiver_business)]) %>%
+      unique() %>%
+      .[copy( sim$discourse_memory[ , -c("receiver_business") ] ), on = c("to" = "from")] %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
+      .[ , past_receiver_business := ifelse( !is.na(receiver_business), sapply(receiver_business, function(x) list(x) ), 0 ) ] %>%
+      .[ , past_sender_business := ifelse( !is.na(sender_business), sapply(sender_business, function(x) list(x) ), 0 ) ] %>%
       .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
-      .[ , past_nbh_incohesion := ifelse( !is.na(nbh_incohesion), sapply(nbh_incohesion, function(x) {list(x)}, 0 ) )] %>%
+      .[ , past_nbh_incohesion := ifelse( !is.na(nbh_incohesion), sapply(nbh_incohesion, function(x) list(x) ), 0 ) ] %>%
       .[ , self_incohesion := vec_get_self_incohesion( from ) ] %>%
-      .[ , past_self_incohesion := ifelse( !is.na(self_incohesion), sapply(self_incohesion, function(x) {list(x)}, 0 ) )] %>%
+      .[ , past_self_incohesion := ifelse( !is.na(self_incohesion), sapply(self_incohesion, function(x) list(x) ), 0 ) ] %>%
       .[ , past_messages := as.character(past_messages) ] %>%
       .[ , past_opinions := as.character(past_opinions) ] %>% 
       .[ , past_receiver_business := as.character(past_receiver_business) ] %>%
@@ -602,7 +603,7 @@ rc_energy_modelStep <- function(sim) {
       }, a=past_opinions, b=assumption_to)] %>% 
       setnames("opinion_from", "opinion") %>%
       setnames("opt_message", "message") %>%
-      .[ , .(from, to, opinion, message, past_messages, past_opinions)] %>%
+      .[ , .(from, to, opinion, message, past_messages, past_opinions, distance_to_past_opinions, sender_business, receiver_business)] %>%
       .[copy(sim$messages), on = c("from" = "from"), nomatch = 0L, allow.cartesian = TRUE] %>%
       .[ , past_messages := as.character(past_messages) ] %>%
       .[ , past_opinions := as.character(past_opinions) ] %>% 
@@ -613,8 +614,9 @@ rc_energy_modelStep <- function(sim) {
       # merge with list columns and make new var  with unequal dim dt: merge(test_one, test_two, by="id", all.x=TRUE)[ , val := ifelse(!is.na(val.y) & sapply(val.y, is.numeric), val.y, val.x)][ , -c("val.x", "val.y")]
       # merge and make new var with unequal dim dt: merge(test_one, test_two, by="id", all.x=TRUE)[ , val := ifelse(!is.na(val.y), val.y, val.x)][ , -c("val.x", "val.y")]
       
-    sim$discourse_memory <- copy( sim$discourse_memory[ , -c("receiver_business") ] ) %>%
-      .[copy(sim$discourse_memory[ , .(to, receiver_business)]), on = c("from", "to")] %>% # remerge it with receiver_business-less version to correspond to receiver business
+    sim$discourse_memory <-  copy(sim$discourse_memory[ , .(to, receiver_business)]) %>%
+      unique() %>%
+      .[copy( sim$discourse_memory[ , -c("receiver_business") ] ), on = c("to" = "from")] %>% # remerge it with receiver_business-less version to correspond to receiver business
       .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
       .[ , self_incohesion := vec_get_self_incohesion( from ) ] %>%
       .[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
