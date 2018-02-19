@@ -286,10 +286,11 @@ rc_energy_modelInit <- function(sim) {
     
     sim$discourse_memory <- copy(sim$discourse_memory[ , .(to, receiver_business)]) %>%
       unique() %>%
-      .[copy( sim$discourse_memory[ , -c("receiver_business") ] ), on = c("to" = "from")] %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
+      .[copy( sim$discourse_memory[ , -c("receiver_business", "to")][ , from_two := from ] ), on = c("to" = "from_two")] %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
+      .[ , -c("from_two")] %>%
       .[ , past_receiver_business := ifelse( !is.na(receiver_business), sapply(receiver_business, function(x) list(x) ), 0 ) ] %>%
       .[ , past_sender_business := ifelse( !is.na(sender_business), sapply(sender_business, function(x) list(x) ), 0 ) ] %>%
-      .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
+      .[ , nbh_incohesion := vec_get_nbh_incohesion(from ) ] %>%
       .[ , past_nbh_incohesion := ifelse( !is.na(nbh_incohesion), sapply(nbh_incohesion, function(x) list(x) ), 0 ) ] %>%
       .[ , self_incohesion := vec_get_self_incohesion( from ) ] %>%
       .[ , past_self_incohesion := ifelse( !is.na(self_incohesion), sapply(self_incohesion, function(x) list(x) ), 0 ) ] %>%
@@ -615,8 +616,8 @@ rc_energy_modelStep <- function(sim) {
       # merge and make new var with unequal dim dt: merge(test_one, test_two, by="id", all.x=TRUE)[ , val := ifelse(!is.na(val.y), val.y, val.x)][ , -c("val.x", "val.y")]
       
     sim$discourse_memory <-  copy(sim$discourse_memory[ , .(to, receiver_business)]) %>%
-      unique() %>%
-      .[copy( sim$discourse_memory[ , -c("receiver_business") ] ), on = c("to" = "from")] %>% # remerge it with receiver_business-less version to correspond to receiver business
+      .[copy( sim$discourse_memory[ , -c("receiver_business", "to")][ , from_two := from ] ), on = c("to" = "from_two")] %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
+      .[ , -c("from_two")] %>%
       .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
       .[ , self_incohesion := vec_get_self_incohesion( from ) ] %>%
       .[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
@@ -785,11 +786,12 @@ get_nbh_incohesion <- function( id ) {
   nbh_indices <- sim$agent_characteristics[ agent_id == id , neighborhood ] %>% unlist()
   
   nbh_assumptions <- sim$discourse_memory[ from == id & to %in% nbh_indices , assumption_to ]
-  
+
   mean_deviations <- outer(nbh_assumptions, nbh_assumptions, "-") %>%
     abs() %>% 
     as.vector() %>%
-    (sum(.) / ((nbh_assumptions*nbh_assumtions) - length(nbh_assumptions)) ) # mean not appropriate, 0 values of diagonal factor in denominator
+    sum() %>%
+    sapply( "/", ((length(nbh_assumptions)*length(nbh_assumptions)) - length(nbh_assumptions)) ) # mean not appropriate, 0 values of diagonal factor in denominator
   
   return(mean_deviations)
   
@@ -806,7 +808,8 @@ get_self_incohesion <- function( id ) {
   mean_deviations <- outer(past, past, "-") %>%
     abs() %>% 
     as.vector() %>%
-    (sum(.) / ((past*past) - length(past)))
+    sum() %>%
+    sapply( "/", ((length(past)*length(past)) - length(past)) )
   
   return(mean_deviations)
   
