@@ -87,7 +87,7 @@ rc_modelInit <- function(sim) {
     as_tibble() %>%
     data.table() %>%
     setnames(old = c("from", "to"), new = c("to", "from"))
-  before_starting_state <<- sim$agent_characteristics
+
   sim$messages <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
@@ -95,12 +95,7 @@ rc_modelInit <- function(sim) {
     rbind(messages) %>% 
     .[copy(sim$agent_characteristics[, .(agent_id, opinion)]), nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from") %>%
-    .[ , assumption_to := opinion_from] ->> starting_state
-  # vec_rnorm(1, .[, opinion_from], 0.1)
-  starting_state_reduced <<- starting_state %>%
-    .[ , -c("to", "assumption_to")] %>%
-    setkey("from") %>%
-    unique()
+    .[ , assumption_to := opinion_from] 
   
   #plot(density(sim$agent_characteristics$opinion))
   
