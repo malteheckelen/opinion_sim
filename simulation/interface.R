@@ -39,7 +39,7 @@ times <- list(start = 0, end = 50)
 parameters <- list(
   basic_setup = list(
     opinion_distribution = "uniform",
-    no_agents = 10
+    no_agents = 80
     ),
   small_world = list(
     dim = 1,
