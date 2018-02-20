@@ -34,7 +34,7 @@ setPaths(cachePath = "cache",
 
 modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
 
-times <- list(start = 0, end = 50)
+times <- list(start = 0, end = 10)
 
 parameters <- list(
   basic_setup = list(
@@ -45,7 +45,7 @@ parameters <- list(
     dim = 1,
     rewire_p = 0.6
   ),
-  rc_model = list(
+  rc_energy_model = list(
     epsilon = 0.15,
     other_incons_tolerance = 0.6,
     self_incons_tolerance = 0.6,
