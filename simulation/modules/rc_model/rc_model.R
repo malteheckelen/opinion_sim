@@ -215,7 +215,9 @@ rc_modelInit <- function(sim) {
                                  }, x=past_opinions, y=opinion_from)
     )
     ] %>%
-    .[ , .(from, to, past_messages, past_opinions)] %>%
+    setnames("opinion_from", "opinion") %>%
+    .[ , message := past_messages[[1]] ] %>%
+    .[ , .(from, to, past_messages, message, opinion, past_opinions)] %>%
     .[ , past_messages := as.character(past_messages) ] %>%
     .[ , past_opinions := as.character(past_opinions) ] %>%
     unique() %>%
@@ -277,10 +279,25 @@ rc_modelStep <- function(sim) {
   #mat <<- sim$message_matrix
   #mess <<- sim$messages
   #ag_car <<- sim$agent_characteristics
-  sim$messages <- sim$messages %>%
-    .[copy(sim$agent_characteristics[, .(agent_id, opinion)]), nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
-    setnames("opinion", "opinion_from") %>%
-    .[ , assumption_to := vec_rnorm(1, .[ , opinion_from], 0.1)]
+  sim$messages <- sim$environment %>%
+    activate(edges) %>%
+    as_tibble() %>%
+    data.table() %>%
+    setnames(old = c("from", "to"), new = c("to", "from"))
+
+  sim$messages <- sim$environment %>%
+    activate(edges) %>%
+    as_tibble() %>%
+    data.table() %>%
+    rbind(messages) %>%
+    .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
+    setnames("opinion", "opinion_from")
+  before_fucko <<- sim$messages
+  sim$messages <-  sim$discourse_memory[ , .(from, to, message) ] %>%
+    unique() %>%
+    setnames( old=c("from", "to"), new=c("to", "from") ) %>%
+    merge(sim$messages, by.x = c("from", "to"), by.y = c("from", "to") ) %>%
+    setnames("message", "assumption_to") # works like a charm until here
 
   # make matrix of all possible optimized messages
   sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) # works
@@ -413,7 +430,9 @@ rc_modelStep <- function(sim) {
                                  }, x=past_opinions, y=opinion_from)
     )
     ] %>%
-    .[ , .(from, to, past_messages, past_opinions)] %>%
+    setnames("opinion_from", "opinion") %>%
+    setnames("opt_message", "message") %>%
+    .[ , .(from, to, message, past_messages, opinion, past_opinions)] %>%
     .[ , past_messages := as.character(past_messages) ] %>%
     .[ , past_opinions := as.character(past_opinions) ] %>%
     unique() %>%
