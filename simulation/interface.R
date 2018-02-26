@@ -1,12 +1,12 @@
 ### Interface
 
-#setwd('C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation')
-setwd('~/GitHub/R_MaDisBe/simulation')
+setwd('C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation')
+#setwd('~/GitHub/R_MaDisBe/simulation')
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
 ## decide where you're working
-#mainDir <- 'C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
-mainDir <- '~/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
+mainDir <- 'C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
+#mainDir <- '~/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
 setPaths(cachePath = "cache",
          modulePath = "modules",
          inputPath = "../data/inputs",
@@ -34,33 +34,37 @@ setPaths(cachePath = "cache",
 
 modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
 
-times <- list(start = 0, end = 10)
+times <- list(start = 0, end = 30)
 
 parameters <- list(
   basic_setup = list(
     opinion_distribution = "uniform",
-    no_agents = 80
+    no_agents = 50
     ),
   small_world = list(
     dim = 1,
-    rewire_p = 0.6
+    nbh_size = 10,
+    rewire_p = 0.4
   ),
+  #hegselmann_krause = list(
+  #  epsilon = 0.3
+  #),
   #rc_model = list(
-  #  epsilon = 0.15,
-  #  other_incons_tolerance = 0.3,
+  #  epsilon = 0.3,
+  #  other_incons_tolerance = 0.4,
   #  self_incons_tolerance = 0.2,
-  #  opinion_memory_depth = 50,
-  #  message_memory_depth = 50
+  #  opinion_memory_depth = 10,
+  #  message_memory_depth = 20
   #)#,
   rc_energy_model = list(
-    epsilon = 0.15,
-    other_incons_tolerance = 1,
-    self_incons_tolerance = 1,
-    energy_level = 30,
-    restoration_factor = 10,
-    opinion_memory_depth = 20,
+    epsilon = 0.3,
+    other_incons_tolerance = 0.4,
+    self_incons_tolerance = 0.2,
+    energy_level = 100,
+    restoration_factor = 30,
+    opinion_memory_depth = 10,
     message_memory_depth = 20,
-    energy_params_memory_depth = 20
+    energy_params_memory_depth = 100
   )
 )
 
