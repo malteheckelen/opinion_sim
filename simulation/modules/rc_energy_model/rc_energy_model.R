@@ -72,15 +72,20 @@ doEvent.rc_energy_model <- function(sim, eventTime, eventType, debug = FALSE) {
 }
 
 rc_energy_modelInit <- function(sim) {
-  # set within_epsilon column in opinions simulation attribute
-  # reserve the Init in every of these simulations to place special attributes for modules
 
   print(time(sim))
 
+  #### MODIFY AGENT_CHARACTERISTICS TABLE
+  # modify agent_characteristics data.table with regard to model additions
+  # take starting energy from parameterization and assign to column
   sim$agent_characteristics <- sim$agent_characteristics %>%
     data.table() %>%
     .[ , energy := params(sim)$rc_energy_model$energy_level]
-  begin <<- sim$agent_characteristics
+  
+  #### CONSTRUCT CHOSEN ACTIONS TABLE 
+  # make data.table for chosen_actions for notation of subj. optimal actions
+  # gets manipulated and rebuilt over course of each round 
+  # agent_id, action_type, best_action
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=2),
@@ -89,18 +94,24 @@ rc_energy_modelInit <- function(sim) {
 
   ) %>% data.table() %>%
     .[ , agent_id := as.integer(agent_id) ]
-
+ 
+  #### CONSTRUCT OVERALL_ACTIONS TABLE 
+  # make data.table for the overall actions: Send, Receive, Both, Nothing
+  # init version of table has max score for "Both", so every agent sends and receives
   sim$actions_overall <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=4),
     actions = rep(c("Send", "Receive", "Both", "Nothing"), no_agents),
     util_score = rep(0, length(actions))
 
-  ) %>% data.table() %>%
+  ) %>%
+    data.table() %>%
     .[ actions == "Both", util_score := 1 ] %>%
+    # cast into wide format, so max_utils are "computed" more easily
     dcast(agent_id ~ actions, value.var = "util_score") %>%
     .[ , agent_id := as.character(agent_id)] %>%
     .[, best_action :=  names(.[ , -c("agent_id")])[apply(.[ , -c("agent_id") ], 1, which.max)]] %>%
+    # remelt
     melt( id.vars = c("agent_id", "best_action"),
           measure.vars = c("Send", "Receive", "Both", "Nothing"),
           variable.name = "actions",
