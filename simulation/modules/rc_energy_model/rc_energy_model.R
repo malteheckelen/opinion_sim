@@ -84,6 +84,7 @@ rc_energy_modelInit <- function(sim) {
   
   #### CONSTRUCT CHOSEN ACTIONS TABLE 
   # make data.table for chosen_actions for notation of subj. optimal actions
+  # these are selectors for the actions to be executed by an agent
   # gets manipulated and rebuilt over course of each round 
   # agent_id, action_type, best_action
   sim$chosen_actions <- tibble(
@@ -118,6 +119,8 @@ rc_energy_modelInit <- function(sim) {
           value.name = "util_score" ) %>%
     .[ , agent_id := as.integer(agent_id) ]
 
+  #### ASSIGN BEST OVERALL ACTIONS TO CHOSEN ACTIONS
+  # at this point chosen actions has the row dimension of actions_overall
   sim$chosen_actions <- copy(sim$actions_overall)[ actions == best_action , .(agent_id, best_action) ] %>%
     merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE) %>%
     .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
