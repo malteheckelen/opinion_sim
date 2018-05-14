@@ -120,13 +120,16 @@ rc_energy_modelInit <- function(sim) {
     .[ , agent_id := as.integer(agent_id) ]
 
   #### ASSIGN BEST OVERALL ACTIONS TO CHOSEN ACTIONS
-  # at this point chosen actions has the row dimension of actions_overall
+  # the action_type is set to actions_overall for all observations
+  # then the best action column for all rows with action_type actions_overall is assigned where applicable
+  # the information in this table at this point gives the best action for overall course of action for each agent
   sim$chosen_actions <- copy(sim$actions_overall)[ actions == best_action , .(agent_id, best_action) ] %>%
     merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE) %>%
-    .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
+    .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.x), best_action.x,  best_action.y)] %>% 
     .[ , -c("best_action.x", "best_action.y")] %>%
     .[ action_type == "actions_send" , best_action := "Not assigned" ]
 
+  #### CONSTRUCT TBLE FOR SENDING ACTIONS
   sim$actions_send <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=2),
@@ -136,6 +139,11 @@ rc_energy_modelInit <- function(sim) {
   ) %>%  data.table() %>%
     .[ , agent_id := as.integer(agent_id) ]
 
+  #### CONSTRUCT MESSAGE TABLE
+  # acts in two steps
+  # 1) construct table from environment and reverse edge directions
+  # 2) do the same again without reversal
+  # this is done because every agent has to be able to send a message to each neigbhor (and thus receive them)
   sim$messages <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
@@ -149,15 +157,17 @@ rc_energy_modelInit <- function(sim) {
     rbind(messages) %>%
     .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from")
-
+  
+  #### PRODUCE POSSIBLE MESSAGES
+  # in init round this is just a uniformly random chosen number on the interval [0,1]
   assumption_to <- runif(nrow(sim$messages), 0, 1)
   sim$messages <- cbind(sim$messages, assumption_to)
 
   # make matrix of all possible optimized messages
-  sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) # works
+  sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) 
   row.names(sim$message_matrix) <- sim$messages[ , from]
   colnames(sim$message_matrix) <- sim$messages[ , to]
-  mess_mat <<- sim$message_matrix
+  
   sim$messages <- copy(sim$message_matrix) %>%
     data.table() %>%
     .[ , from := as.numeric(row.names(message_matrix))] %>%
