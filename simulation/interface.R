@@ -1,11 +1,11 @@
 ### Interface
 
-setwd('C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation')
+setwd('/home/malte/GitHub/R_MaDisBe/simulation')
 #setwd('~/GitHub/R_MaDisBe/simulation')
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
 ## decide where you're working
-mainDir <- 'C://Users/Heckelen/Documents/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
+mainDir <- '/home/malte/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
 #mainDir <- '~/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
 setPaths(cachePath = "cache",
          modulePath = "modules",
