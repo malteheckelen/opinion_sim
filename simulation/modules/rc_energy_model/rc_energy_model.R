@@ -807,7 +807,7 @@ rc_energy_modelStep <- function(sim) {
     .[ , opt_message := ifelse( abs( opinion_from - opt_message ) > params(sim)$rc_energy_model$epsilon,
                                 ifelse( opt_message > opinion_from, opinion_from+params(sim)$rc_energy_model$epsilon, opinion_from-params(sim)$rc_energy_model$epsilon),
                                 opt_message ) ]
-  after_fuck <<- sim$messages
+  
   sim$discourse_memory <- copy(sim$discourse_memory)[ , -c("opinion") ] %>%
     .[sim$agent_characteristics[ , .(agent_id, opinion) ], on=c("from" = "agent_id")] %>%
     .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
@@ -822,8 +822,6 @@ rc_energy_modelStep <- function(sim) {
 
 
   if( length(sim$actions_overall[ best_action %in% c("Both", "Send") , best_action ] > 0 ) ) {
-    
-    testitest <<- sim$actions_send
     
     sim$actions_send <- copy(sim$messages) %>%
       .[copy(sim$actions_overall), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
@@ -871,7 +869,7 @@ rc_energy_modelStep <- function(sim) {
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ , util_score := distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
+      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
       setnames("from", "agent_id") %>%
       .[, .(agent_id, actions, util_score) ] %>%
       setkey("agent_id") %>%
