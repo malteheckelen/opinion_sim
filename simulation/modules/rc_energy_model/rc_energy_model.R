@@ -693,6 +693,10 @@ rc_energy_modelStep <- function(sim) {
     .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from")
 
+  #################################################################
+  #### BUILD sim$actions_overall AND FIND BEST OVERALL ACTIONS ####
+  #################################################################
+
   sim$actions_overall <- copy(sim$discourse_memory) %>%
     .[ , .(from, past_self_incohesion, past_nbh_incohesion, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion)] %>%
     .[(sim$agent_characteristics[ , .(agent_id, energy)] %>% unique()), on=c("from" = "agent_id") ] %>%
@@ -885,11 +889,11 @@ rc_energy_modelStep <- function(sim) {
       .[ , agent_id := as.integer(agent_id) ]
 
     sim$chosen_actions <- copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ] %>%
-      merge(sim$chosen_actions, by="agent_id", all.x=TRUE) %>%
-      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
+      merge(sim$chosen_actions, by="agent_id") %>%
+      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
+      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.x), best_action.x, best_action.y)] %>%
       .[ , -c("best_action.x", "best_action.y")]
-    prepre_fuck_me <<- sim$discourse_memory
-    prepre_messi <<- sim$messages
+
     sim$discourse_memory <- copy(sim$actions_send)[ , -c("util_score")] %>%
       .[copy(sim$messages), on = c("agent_id" = "from"), allow.cartesian = TRUE] %>%
       setnames("agent_id", "from") %>%
