@@ -136,6 +136,9 @@ rc_energy_modelInit <- function(sim) {
           value.name = "util_score" ) %>%
     .[ , agent_id := as.integer(agent_id) ]
   
+  print(paste("OVERALL ACTIONS IN ROUND ", time(sim), collapse = ""))
+  print(table(sim$actions_overall$best_action))
+
   #### sim$actions_overall table specs at this point:
   # rowlength: sim$no_agents*4
   # columns: agent_id (integer), actions (character), util_score (numeric), best_action (character)
@@ -149,9 +152,8 @@ rc_energy_modelInit <- function(sim) {
   # the information in this table at this point gives the best action for overall course of action for each agent
   sim$chosen_actions <- copy(sim$actions_overall)[ actions == best_action , .(agent_id, best_action) ] %>%
     merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE) %>%
-    .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.x), best_action.x,  best_action.y)] %>% 
-    .[ , -c("best_action.x", "best_action.y")] %>%
-    .[ action_type == "actions_send" , best_action := "Not assigned" ]
+    .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] %>% 
+    .[ , -c("best_action.x", "best_action.y")]
 
   #### sim$chosen_actions table specs at this point:
   # rowlength: sim$no_agents*2
@@ -342,6 +344,9 @@ rc_energy_modelInit <- function(sim) {
             value.name = "util_score" ) %>%
       .[ , agent_id := as.integer(agent_id) ]
 
+    print(paste("SENDING ACTIONS IN ROUND ", time(sim), collapse = ""))
+    print(table(sim$actions_send$best_action))
+ 
     #### sim$actions_send table specs at this point:
     # rowlength: sim$no_agents*2 (in later rounds it will be the count of agents who chose a strategy that encompasses sendin)
     # columns: agent_id (integer), best_action (character), actions (character), util_score (numeric)
@@ -353,10 +358,13 @@ rc_energy_modelInit <- function(sim) {
     # merge with actions_send, reduce to relevant columns and rows
     # merge with sim$chosen_actions and update best_action for the value actions_send in action_type
     sim$chosen_actions <- copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ] %>%
-      merge(sim$chosen_actions, by="agent_id") %>%
-      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
-      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.x), best_action.x, best_action.y)] %>%
+      merge(sim$chosen_actions, by="agent_id", all.x=TRUE) %>%
+      .[ is.na(action_type) , action_type := "actions_overall" ] %>%
+      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.x), best_action.x, "NOT ASSIGNED")] %>%
+      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, "NOT ASSIGNED")] %>%
       .[ , -c("best_action.x", "best_action.y")]
+    
+    print(table(sim$chosen_actions$best_action))
 
     #### sim$chosen_actions table specs at this point:
     # rowlength: sim$no_agents*2
@@ -693,6 +701,28 @@ rc_energy_modelStep <- function(sim) {
     .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from")
 
+  ######################################## 
+  #### CONSTRUCT CHOSEN_ACTIONS TABLE ####
+  ########################################
+
+  # make data.table for chosen_actions for notation of subj. optimal actions
+  # these are selectors for the actions to be executed by an agent
+  # gets manipulated and rebuilt over course of each round 
+  # agent_id, action_type, best_action
+  sim$chosen_actions <- tibble(
+
+    agent_id = rep(agent_characteristics$agent_id, each=2),
+    action_type = rep(c("actions_overall", "actions_send"), no_agents),
+    best_action = rep(c("Not assigned"), length(action_type))
+
+  ) %>% data.table() %>%
+    .[ , agent_id := as.integer(agent_id) ]
+  
+  #### sim$chosen_actions table specs at this point:
+  # rowlength: sim$no_agents*2
+  # columns: agent_id (integer), action_type (character), best_action (character)
+
+
   #################################################################
   #### BUILD sim$actions_overall AND FIND BEST OVERALL ACTIONS ####
   #################################################################
@@ -790,7 +820,16 @@ rc_energy_modelStep <- function(sim) {
           value.name = "util_score" ) %>%
     .[ , agent_id := as.integer(agent_id) ]
 
-    
+  print(paste("OVERALL ACTIONS IN ROUND ", time(sim), collapse = ""))
+  print(table(sim$actions_overall$best_action))
+
+  sim$chosen_actions <- copy(sim$actions_overall)[ actions == best_action , .(agent_id, best_action) ] %>%
+    merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE) %>%
+    .[ is.na(action_type) , action_type := "actions_overall" ] %>%
+    .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] %>% 
+    .[ , -c("best_action.x", "best_action.y")]
+
+
   sim$messages <-  sim$discourse_memory[ , .(from, to, message) ] %>%
     unique() %>%
     setnames( old=c("from", "to"), new=c("to", "from") ) %>%
@@ -896,11 +935,17 @@ rc_energy_modelStep <- function(sim) {
             value.name = "util_score" ) %>%
       .[ , agent_id := as.integer(agent_id) ]
 
+    print(paste("SENDING ACTIONS IN ROUND ", time(sim), collapse = ""))
+    print(table(sim$actions_send$best_action))
+   
     sim$chosen_actions <- copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ] %>%
-      merge(sim$chosen_actions, by="agent_id") %>%
-      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, best_action.x)] %>%
-      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.x), best_action.x, best_action.y)] %>%
+      merge(sim$chosen_actions, by="agent_id", all.x=TRUE ) %>% 
+      .[ is.na(action_type) , action_type := "actions_overall" ] %>%
+      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.x), best_action.x, "NOT ASSIGNED")] %>%
+      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, "NOT ASSIGNED")] %>%
       .[ , -c("best_action.x", "best_action.y")]
+    
+    print(table(sim$chosen_actions$best_action))
 
     sim$discourse_memory <- copy(sim$actions_send)[ , -c("util_score")] %>%
       .[copy(sim$messages), on = c("agent_id" = "from"), allow.cartesian = TRUE] %>%

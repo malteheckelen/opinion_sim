@@ -8,16 +8,24 @@ out$data_collect %>%
   theme_bw()
 
 out$data_collect %>%
-  .[ , no := .N, by = c("chosen_sending_action", "time")] %>%
+  melt( id.vars = "time",
+        measure.vars = c("no_Both", "no_Send", "no_Receive", "no_Nothing"),
+	variable.name = "action",
+	value.name = "no"
+      ) %>%
   ggplot(aes(time, no)) +
-  geom_line(aes(color=as.factor(chosen_sending_action))) +
+  geom_line(aes(color=as.factor(action))) +
   theme_bw() +
   theme(legend.position="bottom")
 
 out$data_collect %>%
-  .[ , no := .N, by = c("chosen_overall_action", "time")] %>%
+  melt( id.vars = "time",
+        measure.vars = c("no_Unoptimized", "no_Optimized"),
+	variable.name = "action",
+	value.name = "no"
+      ) %>%
   ggplot(aes(time, no)) +
-  geom_line(aes(color=as.factor(chosen_overall_action))) +
+  geom_line(aes(color=as.factor(action))) +
   theme_bw() +
   theme(legend.position="bottom")
 
