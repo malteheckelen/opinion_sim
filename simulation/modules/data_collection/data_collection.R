@@ -42,22 +42,120 @@ doEvent.data_collection <- function(sim, eventTime, eventType, debug=FALSE) {
 
 data_collectionInit <- function(sim) {
   
-  sim$data_collect <- tibble(
-    agent_id = sim$agent_characteristics[ , agent_id],
-    opinions = sim$agent_characteristics[ , opinion],
-    time = time(sim)
-  ) %>% data.table()
+	
+  if ( ("rc_energy_model" %in% modules) | ("rc_model" %in% modules) ) {
+          no_Unoptimized <-  sim$chosen_actions[best_action == "Unoptimized"] %>% nrow
+          no_Optimized <-  sim$chosen_actions[best_action == "Optimized"] %>% nrow
+          
+	  if ("rc_model" %in% modules) {
+               
+	       sim$data_collect <- tibble(
+              
+               time = time(sim),
+               agent_id = sim$agent_characteristics[ , agent_id],
+               opinions = sim$agent_characteristics[ , opinion],
+	       no_Unoptimized = no_Unoptimized,
+	       no_Optimized = no_Optimized
+	       
+               ) %>% 
+               data.table() 
+
+	  }
+
+	  if ("rc_energy_model" %in% modules) {
+		  
+               no_Both <-  sim$chosen_actions[best_action == "Both"] %>% nrow
+               no_Send <-  sim$chosen_actions[best_action == "Send"] %>% nrow
+               no_Receive <-  sim$chosen_actions[best_action == "Receive"] %>% nrow
+               no_Nothing <-  sim$chosen_actions[best_action == "Nothing"] %>% nrow
+
+	       sim$data_collect <- tibble(
+              
+               time = time(sim),
+               agent_id = sim$agent_characteristics[ , agent_id],
+               opinions = sim$agent_characteristics[ , opinion],
+	       no_Unoptimized = no_Unoptimized,
+	       no_Optimized = no_Optimized,
+	       no_Both = no_Both,
+	       no_Send = no_Send,
+	       no_Receive = no_Receive,
+	       no_Nothing = no_Nothing
+	       
+               ) %>% 
+               data.table() 
+	  }
+
   
+  } else {
+
+	sim$data_collect <- tibble(
+    	agent_id = sim$agent_characteristics[ , agent_id],
+    	opinions = sim$agent_characteristics[ , opinion],
+    	time = time(sim)
+  	) %>% 
+     	data.table()
+   
+  }
+
   return(invisible(sim))
+
 }
 
 data_collectionStep <- function(sim) {
+
+     if ( ("rc_energy_model" %in% modules) | ("rc_model" %in% modules) ) {
+          no_Unoptimized <-  sim$chosen_actions[best_action == "Unoptimized"] %>% nrow
+          no_Optimized <-  sim$chosen_actions[best_action == "Optimized"] %>% nrow
+          
+	  if ("rc_model" %in% modules) {
+               
+	       temp <- tibble(
+              
+               time = time(sim),
+               agent_id = sim$agent_characteristics[ , agent_id],
+               opinions = sim$agent_characteristics[ , opinion],
+	       no_Unoptimized = no_Unoptimized,
+	       no_Optimized = no_Optimized
+	       
+               ) %>% 
+               data.table() 
+
+	  }
+
+	  if ("rc_energy_model" %in% modules) {
+		  
+               no_Both <-  sim$chosen_actions[best_action == "Both"] %>% nrow
+               no_Send <-  sim$chosen_actions[best_action == "Send"] %>% nrow
+               no_Receive <-  sim$chosen_actions[best_action == "Receive"] %>% nrow
+               no_Nothing <-  sim$chosen_actions[best_action == "Nothing"] %>% nrow
+
+	       temp <- tibble(
+              
+               time = time(sim),
+               agent_id = sim$agent_characteristics[ , agent_id],
+               opinions = sim$agent_characteristics[ , opinion],
+	       no_Unoptimized = no_Unoptimized,
+	       no_Optimized = no_Optimized,
+	       no_Both = no_Both,
+	       no_Send = no_Send,
+	       no_Receive = no_Receive,
+	       no_Nothing = no_Nothing
+	       
+               ) %>% 
+               data.table() 
+	  }
+
   
-  temp <- tibble(
-    agent_id = sim$agent_characteristics$agent_id,
-    opinions = sim$agent_characteristics$opinion,
-    time = time(sim)
-  ) %>% data.table()
+  } else {
+
+	temp <- tibble(
+    	agent_id = sim$agent_characteristics[ , agent_id],
+    	opinions = sim$agent_characteristics[ , opinion],
+    	time = time(sim)
+  	) %>% 
+     	data.table()
+   
+  }
   
   sim$data_collect <- temp %>%
     rbind(sim$data_collect)

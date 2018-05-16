@@ -697,6 +697,9 @@ rc_energy_modelStep <- function(sim) {
   #### BUILD sim$actions_overall AND FIND BEST OVERALL ACTIONS ####
   #################################################################
 
+  # The code works in X steps
+  # Step 1: Get all the necessary records of the discourse from sim$discourse_memory
+  # Step 2: 
   sim$actions_overall <- copy(sim$discourse_memory) %>%
     .[ , .(from, past_self_incohesion, past_nbh_incohesion, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion)] %>%
     .[(sim$agent_characteristics[ , .(agent_id, energy)] %>% unique()), on=c("from" = "agent_id") ] %>%
@@ -759,6 +762,11 @@ rc_energy_modelStep <- function(sim) {
     }, x=past_nbh_incohesion, y = past_self_incohesion )] %>%
     .[sim$actions_overall[ , -c("best_action")], on=c("from" = "agent_id"), allow.cartesian = TRUE] %>%
     setnames("from", "agent_id") %>%
+    # Concept of these utility functions
+    # The first part in brackets computes the fraction of the maximum energy an agent can have the agent will have if it chooses that particular strategy; the more energy the agent will have, the better; this is diminished by the second part in brackets: the higher the past percent business for that strategy is, the worse off is the probable amount of energy
+    # the third part in brackets represents the possible self incohesion; this is also diminished by a factor constructed in the same way as above
+    # the fourth part in brackets represents the possible neighborhood incohesion; this is also diminished by a factor constructed in the same way as above
+    # what sign the third and fourth part have depends on the strategy: Sending does help with neighborhood incohesion, but not self incohesion while Receiving helps with high self incohesion (as the agent doesn't say anything this round), but can't help with high neighborhood incohesion
     .[ actions == "Send", util_score :=
          (( energy - send_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - send_business_mean_index) -
          ( self_incohesion * (1 - psi_mean_index) ) +
