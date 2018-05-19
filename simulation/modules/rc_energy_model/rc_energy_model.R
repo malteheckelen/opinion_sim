@@ -732,34 +732,38 @@ rc_energy_modelStep <- function(sim) {
   # Step 1: Get all the necessary records of the discourse from sim$discourse_memory
   # Step 2: 
   sim$actions_overall <- copy(sim$discourse_memory) %>%
-    .[ , .(from, past_self_incohesion, past_nbh_incohesion, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion)] %>%
+    .[ , max_send_energy_loss := .N*2, by = from ] %>%
+    .[ , max_receive_energy_loss := .N, by = to ] %>%
+    .[ , .(from, past_self_incohesion, past_nbh_incohesion, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion, max_send_energy_loss, max_receive_energy_loss)] %>%
     .[(sim$agent_characteristics[ , .(agent_id, energy)] %>% unique()), on=c("from" = "agent_id") ] %>%
     .[ , psi_mean_index := mapply(function(x) {
 
-      #sum(unlist(x)) / length(unlist(x))
-      mean(unlist(x))
+      is_na <- sum(unlist(x)) / length(unlist(x))
+
+      ifelse(is.na(is_na), 0, is_na)
 
     }, x=past_self_incohesion )] %>%
     .[ , pni_mean_index := mapply(function(x) {
-
-      #sum(unlist(x)) / length(unlist(x))
-      mean(unlist(x))
+ 
+      is_na <- sum(unlist(x)) / length(unlist(x))
+      
+      ifelse(is.na(is_na), 0, is_na)
 
     }, x=past_nbh_incohesion )] %>%
-    .[ , rec_business_mean_index := mapply(function(x) {
+    .[ , rec_business_mean_index := mapply(function(x, y) {
 
-      is_na <- sum(unlist(x)) / sum(max(unlist(x))*length(unlist(x)))
+      is_na <- sum(unlist(x)) / y
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_receiver_business )] %>%
-    .[ , send_business_mean_index := mapply(function(x) {
+    }, x=past_receiver_business, y=max_receive_energy_loss )] %>%
+    .[ , send_business_mean_index := mapply(function(x, y) {
 
-      is_na <- sum(unlist(x)) / sum(max(unlist(x))*length(unlist(x)))
+      is_na <- sum(unlist(x)) / y
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_sender_business )] %>%
+    }, x=past_sender_business, y=max_send_energy_loss )] %>%
     .[ , rec_business_mean := mapply(function(x) {
 
       mean(unlist(x))
@@ -772,25 +776,20 @@ rc_energy_modelStep <- function(sim) {
     }, x=past_sender_business )] %>%
     .[ , both_business_mean := mapply(function(x, y) {
 
-      sum( mean(c(unlist(x)), mean(unlist(x))) )
+      sum( mean(unlist(x)), mean(unlist(y))) 
 
     }, x=past_sender_business, y=past_receiver_business )] %>%
     .[ , both_business_mean_index := mapply(function(x, y) {
 
-      numerator <- sum( c(unlist(x), unlist(x)) )
+      numerator <- sum( c(unlist(x), unlist(y)) )
 
-      denominator <- sum( c(max(unlist(x))*length(unlist(x)), max(unlist(y))*length(unlist(y))) )
+      denominator <- z + a
 
       is_na <- numerator / denominator
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_sender_business, y=past_receiver_business )] %>%
-    .[ , both_incohesion_mean := mapply(function(x, y) {
-
-      mean(c(mean(unlist(x)), mean(unlist(y))))
-
-    }, x=past_nbh_incohesion, y = past_self_incohesion )] %>%
+    }, x=past_sender_business, y=past_receiver_business, z = max_receive_energy_loss, a = max_send_energy_loss )] %>%
     .[sim$actions_overall[ , -c("best_action")], on=c("from" = "agent_id"), allow.cartesian = TRUE] %>%
     setnames("from", "agent_id") %>%
     # Concept of these utility functions
@@ -800,18 +799,19 @@ rc_energy_modelStep <- function(sim) {
     # what sign the third and fourth part have depends on the strategy: Sending does help with neighborhood incohesion, but not self incohesion while Receiving helps with high self incohesion (as the agent doesn't say anything this round), but can't help with high neighborhood incohesion
     .[ actions == "Send", util_score :=
          (( energy - send_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - send_business_mean_index) -
-         ( self_incohesion * (1 - psi_mean_index) ) +
-         ( nbh_incohesion * (1 - pni_mean_index) )] %>%
-    .[ actions == "Receive", util_score := (( energy - rec_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - rec_business_mean_index) +
-         ( self_incohesion * (1 - psi_mean_index) ) -
-         ( nbh_incohesion * (1 - pni_mean_index) )] %>%
-    .[ actions == "Both", util_score :=  (( energy - both_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - both_business_mean_index) +
-         ( self_incohesion * (1 - psi_mean_index) * 0.5 ) +
-         ( nbh_incohesion * (1 - pni_mean_index) * 0.5 )] %>%
+         ( self_incohesion * (psi_mean_index) ) +
+         ( nbh_incohesion * (pni_mean_index) )] %>%
+    .[ actions == "Receive", util_score := 
+         (( energy - rec_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - rec_business_mean_index) +
+         ( self_incohesion * (psi_mean_index) ) -
+         ( nbh_incohesion * (pni_mean_index) )] %>%
+    .[ actions == "Both", util_score :=  
+         (( energy - both_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - both_business_mean_index) +
+         ( self_incohesion * (psi_mean_index) * 0.5 ) +
+         ( nbh_incohesion * (pni_mean_index) * 0.5 )] %>%
     .[ actions == "Nothing", util_score := ifelse( energy < vec_min(c(send_business_mean, rec_business_mean)), max(util_score)+100, min(util_score)-100) ] %>%
     .[ , -c("past_self_incohesion", "past_nbh_incohesion", "past_receiver_business", "past_sender_business") ] %>%
     unique() %>%
-    #.[, util_score := sum(util_score), by=c("agent_id", "actions")] %>%
     dcast(agent_id ~ actions, value.var = "util_score", fun.aggregate = sum) %>%
     .[ , agent_id := as.character(agent_id)] %>%
     .[, best_action :=  names( .[ , -c("agent_id")] )[ apply(.[ , -c("agent_id") ], 1, which.max) ] ] %>%
