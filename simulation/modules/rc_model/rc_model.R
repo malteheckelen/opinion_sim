@@ -85,7 +85,7 @@ rc_modelInit <- function(sim) {
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=1),
-    action_type = rep(c("actions_send"), no_agents),
+    action_type = rep(c("actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
   ) %>% data.table() %>%
@@ -298,7 +298,7 @@ rc_modelStep <- function(sim) {
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=1),
-    action_type = rep(c("actions_send"), no_agents),
+    action_type = rep(c("actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
   ) %>% data.table() %>%

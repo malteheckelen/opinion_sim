@@ -323,7 +323,8 @@ rc_energy_modelInit <- function(sim) {
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function setnames("from", "agent_id") %>%
+      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% 
+      .[ , agent_id := from ] %>%
       .[ , .(agent_id, actions, util_score)] %>%
       setkey("agent_id") %>%
       unique() %>%
@@ -1039,7 +1040,14 @@ rc_energy_modelStep <- function(sim) {
       .[ , past_receiver_business := as.character(past_receiver_business) ] %>%
       .[ , past_sender_business := as.character(past_sender_business) ] %>%
       unique() %>%
-      .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>% .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% .[ , past_receiver_business := sapply(past_receiver_business, function(x) list(eval(parse(text = x))))] %>% .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>% unique() 
+      .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>% 
+      .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% 
+      .[ , past_receiver_business := sapply(past_receiver_business, function(x) list(eval(parse(text = x))))] %>% 
+      .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] 
+
+    temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>% 
+	    unique() 
+    
     sim$discourse_memory <-  copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("from"), by.y = c("to"), all.x = TRUE) %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
       .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
@@ -1138,6 +1146,30 @@ rc_energy_modelStep <- function(sim) {
       .[ , .(agent_id, opinion_y)] %>%
       setkey("agent_id") %>%
       unique()
+
+    if( length(sim$actions_overall[ best_action %in% c("Nothing") , best_action ] > 0 ) ) {
+     
+	  sim$opinion_updating <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
+	    unique() %>%
+	    .[ copy(actions_overall), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
+	    .[ best_action == actions ] %>%
+	    .[ best_action == "Nothing" ] %>%
+            .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
+            .[ best_action == actions ] %>%
+	    .[ , mean_past_opinions := sapply(past_opinions, function(x) {
+						     unlist(x)
+						     mean(x)
+      }) ] %>%
+	    .[ , denominator := sapply(past_opinions, function(x) { length(x) }) ] %>%
+            .[ , opinion_y := ifelse( denominator != 0, mean_past_opinions / denominator, opinion_from)] %>%
+	    setnames("from", "agent_id") %>%
+	    .[ , .(agent_id, opinion_y)] %>%
+	    setkey("agent_id") %>%
+	    unique() %>%
+	    rbind(sim$opinion_updating)
+
+      }
+    
 
     sim$discourse_memory <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
       unique() %>%
