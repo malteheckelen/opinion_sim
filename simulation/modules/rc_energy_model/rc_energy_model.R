@@ -238,10 +238,10 @@ rc_energy_modelInit <- function(sim) {
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
     .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := mean(opt_message), by = .(from)] %>%
-    .[ , opt_message := ifelse( abs( opinion_from - opt_message ) > params(sim)$rc_energy_model$epsilon,
-                                ifelse( opt_message > opinion_from, opinion_from+params(sim)$rc_energy_model$epsilon, opinion_from-params(sim)$rc_energy_model$epsilon),
-                                opt_message ) ]
+    .[ , opt_message := median(opt_message), by = .(from)] %>%
+     #.[ , opt_message := ifelse( abs( opinion_from - opt_message ) > params(sim)$rc_energy_model$epsilon,
+     #                           ifelse( opt_message > opinion_from, opinion_from+params(sim)$rc_energy_model$epsilon, opinion_from-params(sim)$rc_energy_model$epsilon),
+     #                           opt_message ) ]
   
   #### sim$messages table specs at this point:
   # rowlength: ( sim$environment %>% as_tibble() %>% nrow() )*2
@@ -855,10 +855,10 @@ rc_energy_modelStep <- function(sim) {
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
     .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := mean(opt_message), by = "from" ] %>%
-    .[ , opt_message := ifelse( abs( opinion_from - opt_message ) > params(sim)$rc_energy_model$epsilon,
-                                ifelse( opt_message > opinion_from, opinion_from+params(sim)$rc_energy_model$epsilon, opinion_from-params(sim)$rc_energy_model$epsilon),
-                                opt_message ) ]
+    .[ , opt_message := median(opt_message), by = "from" ] %>%
+    #.[ , opt_message := ifelse( abs( opinion_from - opt_message ) > params(sim)$rc_energy_model$epsilon,
+    #                            ifelse( opt_message > opinion_from, opinion_from+params(sim)$rc_energy_model$epsilon, opinion_from-params(sim)$rc_energy_model$epsilon),
+    #                            opt_message ) ]
   
   sim$discourse_memory <- copy(sim$discourse_memory)[ , -c("opinion") ] %>%
     .[sim$agent_characteristics[ , .(agent_id, opinion) ], on=c("from" = "agent_id")] %>%
@@ -900,6 +900,42 @@ rc_energy_modelStep <- function(sim) {
                }
         )
       }, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
+      .[, distance_to_past_messages := mapply(function(a,b,c,k) {
+        switch(k,
+               "Unoptimized" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - b)
+                   })
+                 )
+               }
+        )
+      }, a=past_messages, b=opt_message, c=opinion_from, k=actions)] %>%
+      .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+        switch(k,
+               "Unoptimized" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - b)
+                   })
+                 )
+               }
+        )
+      }, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
       .[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -921,7 +957,7 @@ rc_energy_modelStep <- function(sim) {
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
+      .[ , util_score := 0 - distance_to_past_messages - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
       setnames("from", "agent_id") %>%
       .[, .(agent_id, actions, util_score) ] %>%
       setkey("agent_id") %>%
