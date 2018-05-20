@@ -100,7 +100,7 @@ rc_energy_modelInit <- function(sim) {
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=2),
-    action_type = rep(c("actions_overall", "actions_send"), no_agents),
+    action_type = rep(c("actions_overall", "actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
   ) %>% data.table() %>%
@@ -323,8 +323,7 @@ rc_energy_modelInit <- function(sim) {
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ , util_score := distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
-      setnames("from", "agent_id") %>%
+      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function setnames("from", "agent_id") %>%
       .[ , .(agent_id, actions, util_score)] %>%
       setkey("agent_id") %>%
       unique() %>%
@@ -688,7 +687,7 @@ rc_energy_modelStep <- function(sim) {
     activate(edges) %>%
     as_tibble() %>%
     data.table() %>%
-    rbind(messages) %>%
+    rbind(sim$messages) %>%
     .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("from" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_from")
 
@@ -703,7 +702,7 @@ rc_energy_modelStep <- function(sim) {
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=2),
-    action_type = rep(c("actions_overall", "actions_send"), no_agents),
+    action_type = rep(c("actions_overall", "actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
   ) %>% data.table() %>%
@@ -928,24 +927,6 @@ rc_energy_modelStep <- function(sim) {
                }
         )
       }, a=past_messages, b=opt_message, c=opinion_from, k=actions)] %>%
-      .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
-        switch(k,
-               "Unoptimized" = {
-                 mean(
-                   sapply(a, function(x) {
-                     abs(x - c)
-                   })
-                 )
-               },
-               "Optimized" = {
-                 mean(
-                   sapply(a, function(x) {
-                     abs(x - b)
-                   })
-                 )
-               }
-        )
-      }, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
       .[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -1058,14 +1039,7 @@ rc_energy_modelStep <- function(sim) {
       .[ , past_receiver_business := as.character(past_receiver_business) ] %>%
       .[ , past_sender_business := as.character(past_sender_business) ] %>%
       unique() %>%
-      .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>%
-      .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>%
-      .[ , past_receiver_business := sapply(past_receiver_business, function(x) list(eval(parse(text = x))))] %>%
-      .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))]
-
-    temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>%
-      unique()
-    
+      .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>% .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% .[ , past_receiver_business := sapply(past_receiver_business, function(x) list(eval(parse(text = x))))] %>% .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>% unique() 
     sim$discourse_memory <-  copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("from"), by.y = c("to"), all.x = TRUE) %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
       .[ , nbh_incohesion := vec_get_nbh_incohesion(from) ] %>%
