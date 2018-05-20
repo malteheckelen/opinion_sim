@@ -97,13 +97,11 @@ rc_modelInit <- function(sim) {
     setnames("opinion", "opinion_from") %>%
     .[ , assumption_to := opinion_from]
 
-  #plot(density(sim$agent_characteristics$opinion))
-
   # make matrix of all possible optimized messages
   sim$message_matrix <- outer(sim$messages$opinion_from, sim$messages$assumption_to, produce_altered_message) # works
   row.names(sim$message_matrix) <- sim$messages[ , from]
   colnames(sim$message_matrix) <- sim$messages[ , to]
-  mess_mat <<- sim$message_matrix
+
   sim$messages <- copy(sim$message_matrix) %>%
     data.table() %>%
     .[ , from := as.numeric(row.names(message_matrix))] %>%
@@ -117,12 +115,7 @@ rc_modelInit <- function(sim) {
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
     .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := mean(opt_message), by = .(from)] ->> messages_distro
-
-  messages_distro_reduced <<- messages_distro %>%
-    .[ , .(from, opt_message)] %>%
-    setkey("from") %>%
-    unique()
+    .[ , opt_message := mean(opt_message), by = .(from)] 
 
   # in future rounds, past_messages will be assigned too
   sim$discourse_memory <- copy(sim$messages) %>%
