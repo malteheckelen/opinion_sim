@@ -1147,8 +1147,8 @@ rc_energy_modelStep <- function(sim) {
       setkey("agent_id") %>%
       unique()
 
-    if( length(sim$actions_overall[ best_action %in% c("Nothing") , best_action ] > 0 ) ) {
-     
+    if( length(sim$actions_overall[ best_action %in% c("Nothing") , best_action ]) > 0  ) {
+
 	  sim$opinion_updating <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
 	    unique() %>%
 	    .[ copy(actions_overall), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
@@ -1156,20 +1156,16 @@ rc_energy_modelStep <- function(sim) {
 	    .[ best_action == "Nothing" ] %>%
             .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
             .[ best_action == actions ] %>%
-	    .[ , mean_past_opinions := sapply(past_opinions, function(x) {
-						     unlist(x)
-						     mean(x)
-      }) ] %>%
-	    .[ , denominator := sapply(past_opinions, function(x) { length(x) }) ] %>%
-            .[ , opinion_y := ifelse( denominator != 0, mean_past_opinions / denominator, opinion_from)] %>%
+	    .[ , opinion_y := sapply(past_opinions, function(x) { median(x) }) ] %>%
 	    setnames("from", "agent_id") %>%
 	    .[ , .(agent_id, opinion_y)] %>%
 	    setkey("agent_id") %>%
 	    unique() %>%
 	    rbind(sim$opinion_updating)
 
-      }
-    
+    }
+
+
 
     sim$discourse_memory <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
       unique() %>%

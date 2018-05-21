@@ -39,12 +39,12 @@ times <- list(start = 0, end = 100)
 parameters <- list(
   basic_setup = list(
     opinion_distribution = "uniform",
-    no_agents = 50
+    no_agents = 20
     ),
   small_world = list(
     dim = 1,
     nbh_size = 10,
-    rewire_p = 0.4
+    rewire_p = 0.6
   ),
   #hegselmann_krause = list(
   #  epsilon = 0.3
