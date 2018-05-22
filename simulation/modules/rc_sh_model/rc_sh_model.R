@@ -21,7 +21,7 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "rc_energy_model.Rmd"),
-  reqdPkgs = list("tidyverse", "data.table"),
+  reqdPkgs = list("tidyverse", "data.table", "rlogitnorm"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
@@ -31,7 +31,10 @@ defineModule(sim, list(
     defineParameter("opinion_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember opinions for."),
     defineParameter("energy_level", "numeric", 100, NA, NA, "The starting energy level of every agent."),
     defineParameter("restoration_factor", "numeric", 20, NA, NA, "The number of energy units that are restored to agents at the end of every round."),
-    defineParameter("energy_params_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember statistics relevant for overall action selection for.")
+    defineParameter("energy_params_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember statistics relevant for overall action selection for."),
+    defineParameter("no_groups", "numeric", 1, NA, NA, "The number social groups."),
+    defineParameter("expert_percentage", "numeric", 0, NA, NA, "The percentage of declared experts."),
+    defineParameter("sigma_complexity", "numeric", 1, NA, NA, "The percentage of declared experts.")
   ),
   inputObjects = bind_rows(
     expectsInput("environment", "tbl_graph", "The environment for the agents"),
@@ -83,8 +86,10 @@ rc_sh_modelInit <- function(sim) {
   # take starting energy from parameterization and assign to column
   sim$agent_characteristics <- sim$agent_characteristics %>%
     data.table() %>%
-    .[ , energy := params(sim)$rc_energy_model$energy_level] %>%
-    .[ , meta_attribute :=  runif(sim$no_agents, 0, 1) ]
+    .[ , energy := params(sim)$rc_sh_model$energy_level] %>%
+    .[ , group := sample(c(1:sim$rc_sh_model$no_groups), size=sim$no_agents, replace=TRUE] %>%
+    .[ , expert := sample(c(0,1), size=sim$no_agents, replace=TRUE, prob=c((1-sim$rc_sh_model$prob_expert), sim$rc_sh_model$prob_expert)) ] %>%
+    .[ , complexity := rlogitnorm(0, sim$rc_sh_model$sigma_complexity, sim$no_agents) ]
   
   #### sim$agent_characteristics table specs at this point:
   # rowlength: sim$no_agents
@@ -119,8 +124,8 @@ rc_sh_modelInit <- function(sim) {
   # init version of table has max score for "Both", so every agent sends and receives
   sim$actions_overall <- tibble(
 
-    agent_id = rep(agent_characteristics$agent_id, each=6),
-    actions = rep(c("Send", "Receive", "Receive_sh", "Both", "Both_sh", "Nothing"), no_agents),
+    agent_id = rep(agent_characteristics$agent_id, each=4),
+    actions = rep(c("Send", "Receive", "Both", "Nothing"), sim$no_agents),
     util_score = rep(0, length(actions))
 
   ) %>%
@@ -163,8 +168,8 @@ rc_sh_modelInit <- function(sim) {
 
   sim$actions_send <- tibble(
 
-    agent_id = rep(agent_characteristics$agent_id, each=2),
-    actions = rep(c("Unoptimized", "Optimized"), no_agents),
+    agent_id = rep(agent_characteristics$agent_id, each=4),
+    actions = rep(c("Unoptimized", "Optimized", "Unoptimized_appeal", "Optimized_appeal"), sim$no_agents),
     util_score = rep(0, length(actions))
 
   ) %>%  data.table() %>%
@@ -236,7 +241,8 @@ rc_sh_modelInit <- function(sim) {
     .[ , from := as.integer(from)] %>%
     .[ , to := as.integer(to)] %>%
     .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := median(opt_message), by = .(from)] 
+    .[ , opt_message := median(opt_message), by = .(from)] %>%
+    merge(copy(sim$agent_characteristics)[ , op_compl := complexity ][ , .(agent_id, op_compl) ], on=c("from", "agent_id"), allow.cartesian = TRUE] # at this point every agent can only argue for optimized messages with the complexity of his own internal argumentation for his own opinion
   
   #### sim$messages table specs at this point:
   # rowlength: ( sim$environment %>% as_tibble() %>% nrow() )*2
@@ -249,11 +255,14 @@ rc_sh_modelInit <- function(sim) {
   # at the end of Init, past_messages will be assigned too
   sim$discourse_memory <- copy(sim$messages) %>%
     .[ , past_opinions := sapply(opinion_from, function(x) {list(x)} )] %>%
+    .[ , past_op_compls := sapply(op_compl, function(x) {list(x)} ) ] %>%
     setnames("opinion_from", "opinion") %>%
-    .[ , .(from, opinion, past_opinions)] %>%
+    .[ , .(from, opinion, past_opinions, op_compl)] %>%
     .[ , past_opinions := as.character(past_opinions) ] %>% # unique() can't handle list columns, so first transform to character
+    .[ , past_op_compls := as.character(past_op_compls) ] %>% # unique() can't handle list columns, so first transform to character
     unique() %>%
     .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% # then transform back
+    .[ , past_op_compls := sapply(past_op_compls, function(x) list(eval(parse(text = x))))] %>% # then transform back
     .[ , sender_business := 0 ] %>%
     .[ , receiver_business := 0 ]
 
@@ -285,6 +294,23 @@ rc_sh_modelInit <- function(sim) {
       unique() %>%
       .[copy(sim$actions_send), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
       .[copy(sim$discourse_memory), on = c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
+      .[, involvement := sapply( past_op_compls, function(x) mean(x) ] %>%
+      .[, message_complexity := mapply(function(a,k) {
+        switch(k,
+               "Unoptimized" = {
+                 which.max(a) 
+	       },
+               "Optimized" = {
+                 which.max(a)
+	       },
+               "Unoptimized_appeal" = {
+                 which.max(a)
+	       },
+               "Optimized_appeal" = {
+                 which.max(a)
+	       }
+        )
+      }, a=past_opt_compls, k=actions)] %>%
       .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
@@ -300,6 +326,20 @@ rc_sh_modelInit <- function(sim) {
                      abs(x - b)
                    })
                  )
+               },
+               "Unoptimized_appeal" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized_appeal" = {
+                 mean(
+                   sapply(a, function(x) {
+                     abs(x - b)
+                   })
+                 )
                }
         )
       }, a=past_opinions, b=opt_message, c=opinion_from, k=actions)] %>%
@@ -309,6 +349,12 @@ rc_sh_modelInit <- function(sim) {
                  abs(a - a)
                },
                "Optimized" = {
+                 abs(a - b)
+               },
+               "Unoptimized_appeal" = {
+                 abs(a - a)
+               },
+               "Optimized_appeal" = {
                  abs(a - b)
                }
         )
@@ -320,11 +366,20 @@ rc_sh_modelInit <- function(sim) {
                },
                "Optimized" = {
                  abs(c - b)
+               },
+               "Unoptimized_appeal" = {
+                 abs(c - a)
+               },
+               "Optimized_appeal" = {
+                 abs(c - b)
                }
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% 
+      .[ actions == "Unoptimized" , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - message_complexity + involvement] %>% 
+      .[ actions == "Unoptimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + message_complexity - involvement] %>% 
+      .[ actions == "Optimized", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - message_complexity + involvement] %>% 
+      .[ actions == "Optimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + message_complexity - involvement] %>% 
       .[ , agent_id := from ] %>%
       .[ , .(agent_id, actions, util_score)] %>%
       setkey("agent_id") %>%
