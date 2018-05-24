@@ -21,7 +21,7 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "rc_energy_model.Rmd"),
-  reqdPkgs = list("tidyverse", "data.table", "rlogitnorm"),
+  reqdPkgs = list("tidyverse", "data.table", "logitnorm"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
@@ -88,7 +88,7 @@ rc_sh_modelInit <- function(sim) {
   sim$agent_characteristics <- sim$agent_characteristics %>%
     data.table() %>%
     .[ , energy := params(sim)$rc_sh_model$energy_level] %>%
-    .[ , group := sample(c(1:sim$rc_sh_model$no_groups), size=sim$no_agents, replace=TRUE] %>%
+    .[ , group := sample(c(1:sim$rc_sh_model$no_groups), size=sim$no_agents, replace=TRUE) ]  %>%
     .[ , expert := sample(c(0,1), size=sim$no_agents, replace=TRUE, prob=c((1-sim$rc_sh_model$prob_expert), sim$rc_sh_model$prob_expert)) ] %>%
     .[ , complexity := rlogitnorm(0, sim$rc_sh_model$sigma_complexity, sim$no_agents) ]
   
@@ -667,7 +667,6 @@ rc_sh_modelInit <- function(sim) {
       .[ , denominator := .N, by=from ] %>%
       .[ , opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
       .[ , new_op_compl := sum(msg_compl) / .N , by=from ] %>%
-      .[ , 
       setnames("from", "agent_id") %>%
       .[ , receiver_business := .N + sum(msg_compl) , by=from ] %>%
       .[ , .(agent_id, opinion_y, new_op_compl, receiver_business)]
@@ -688,7 +687,7 @@ rc_sh_modelInit <- function(sim) {
     # columns: from (integer), to (integer), receiver_business (numeric), opinion (numeric), message (numeric), past_messages, past_opinions, distance_to_past_opinions, sender_business, past_receiver_business, past_sender_business, nbh_incohesion, past_nbh_incohesion, self_incohesion, past_self_incohesion (all numeric)
 
     sim$opinion_updating <- sim$opinion_updating_s[ , .(agent_id, opinion_y, new_op_compl) ] %>%
-      rbind(sim$opinion_updating_h[ , .(agent_id, opinion_y, new_op_compl) ] %>%
+      rbind(sim$opinion_updating_h[ , .(agent_id, opinion_y, new_op_compl) ] ) %>%
       setkey("agent_id") %>%
       unique() 
 
