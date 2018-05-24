@@ -229,7 +229,7 @@ rc_sh_modelInit <- function(sim) {
   # this table is then joined with sim$messages
   # agents send messages optimized for their whole neighborhood: thus opt_message is the mean of all optimized messages per agent
   # if this optimized message exceeds epsilon, the maximum possible deviation of opinion_from is used 
-  sim$messages <- copy(sim$message_matrix) %>%
+  sim$messages <- copy(sim$message_matrix) %>% # what do we have in assumption_to?
     data.table() %>%
     .[ , from := as.numeric(row.names(sim$message_matrix))] %>%
     melt( id.vars = c("from"),
@@ -243,7 +243,9 @@ rc_sh_modelInit <- function(sim) {
     .[ , to := as.integer(to)] %>%
     .[copy(unique(sim$messages)), on=c("from", "to"), nomatch = 0L, allow.cartesian = TRUE] %>%
     .[ , opt_message := median(opt_message), by = .(from)] %>%
-    merge(copy(sim$agent_characteristics)[ , op_compl := complexity ][ , .(agent_id, op_compl) ], on=c("from", "agent_id"), allow.cartesian = TRUE] # at this point every agent can only argue for optimized messages with the complexity of his own internal argumentation for his own opinion
+    merge(copy(sim$agent_characteristics)[ , op_compl := complexity ][ , .(agent_id, op_compl) ], on=c("from", "agent_id"), allow.cartesian = TRUE) %>% # at this point every agent can only argue for optimized messages with the complexity of his own internal argumentation for his own opinion 
+    .[ , msg_compl := op_compl ]
+	  
   
   #### sim$messages table specs at this point:
   # rowlength: ( sim$environment %>% as_tibble() %>% nrow() )*2
@@ -295,23 +297,23 @@ rc_sh_modelInit <- function(sim) {
       unique() %>%
       .[copy(sim$actions_send), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
       .[copy(sim$discourse_memory), on = c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
-      .[, involvement := sapply( past_op_compls, function(x) mean(x) ] %>%
-      .[, message_complexity := mapply(function(a,k) {
+      .[, involvement := sapply( past_op_compls, function(x) mean(x) )  ] %>%
+      .[, msg_compl := mapply(function(a, b, k) {
         switch(k,
                "Unoptimized" = {
-                 max(a) 
+                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) # new opinion can be argued for with the mean deviation complexity of own opinion complexity 
 	       },
                "Optimized" = {
-                 max(a)
+                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
 	       },
                "Unoptimized_appeal" = {
-                 max(a)
+                 0
 	       },
                "Optimized_appeal" = {
-                 max(a)
+                 0 
 	       }
         )
-      }, a=past_opt_compls, k=actions)] %>%
+      }, a=past_opt_compls, b=op_compl, k=actions)] %>% # here, later also past_msg_compls
       .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
@@ -377,10 +379,10 @@ rc_sh_modelInit <- function(sim) {
         )
       }, a=opinion_from, b=opt_message, c=assumption_to, k=actions)] %>%
       .[ , -c("past_opinions", "to")] %>% # include past_messages here in the step function
-      .[ actions == "Unoptimized" , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - message_complexity + involvement] %>% 
-      .[ actions == "Unoptimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + message_complexity - involvement] %>% 
-      .[ actions == "Optimized", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - message_complexity + involvement] %>% 
-      .[ actions == "Optimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + message_complexity - involvement] %>% 
+      .[ actions == "Unoptimized" , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement] %>% 
+      .[ actions == "Unoptimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement] %>% 
+      .[ actions == "Optimized", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement] %>% 
+      .[ actions == "Optimized_appeal", util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement] %>% 
       .[ , agent_id := from ] %>%
       .[ , .(agent_id, actions, util_score)] %>%
       setkey("agent_id") %>%
@@ -436,7 +438,23 @@ rc_sh_modelInit <- function(sim) {
       .[ actions==best_action ] %>%
       .[ , -c("actions")]  %>% # we need best_action further down
       unique() %>% # do something about business
-      .[ , sender_business := .N, by = "from" ] %>% # generate business
+      .[ , sender_business := .N , by=from ] %>%
+      .[ , sender_business := mapply(function(a, b, c, k) {
+        switch(k,
+               "Unoptimized" = {
+                 c + b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) # number of sent messages plus complexity of that message
+	       },
+               "Optimized" = {
+                 c + b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
+	       },
+               "Unoptimized_appeal" = {
+                c 
+	       },
+               "Optimized_appeal" = {
+                 c 
+	       }
+        )
+      }, a=past_opt_compls, b=op_compl, c= sender_business, k=actions)] %>% # here, later also past_msg_compls
       .[ , receiver_business := .N, by = "to" ] %>% # generate business
       merge(sim$discourse_memory[ , -c("sender_business", "receiver_business", "assumption_to")], by=c("from"), all.x=TRUE)%>% # get full row count back, following two lines resolve variable name conflicts
       .[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] %>% # if not a sender, 0 sender business
@@ -517,7 +535,7 @@ rc_sh_modelInit <- function(sim) {
     # Step 2: Merge with actions_send and use best_action to place the respective values from the renamed columns in assumption_to 
     # What this does is now from and to correspond to the correct labels after the remerge while there are correct columns for opinion_from and assumption_to
     # Opinion updating can now just take this, merge on from with action tables, select receivers and then work with assumption_to, sum by from etc.
-    # One naming issue: message_complexity is the complexity of the message corresponding to assumption_to, which is misleading
+    # One naming issue: msg_compl is the complexity of the message corresponding to assumption_to, which is misleading
     sim$messages <- copy(sim$messages) %>%
       setnames(old=c("opinion_from", "opt_message"), new=c("opinion_from_y", "opt_message_y")) %>%
       unique() %>%
@@ -528,10 +546,22 @@ rc_sh_modelInit <- function(sim) {
     sim$messages <- copy(sim$messages) %>%
       .[sim$actions_send[ , .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>%
       .[sim$sim$discourse_memory[ , .(from, past_msg_compls, past_op_compls)], nomatch=0L, on=c("from" = "to"), allow.cartesian=TRUE] %>%
-      .[ (actions == "Unoptimized_appeal" | actions == "Optimized_appeal") , message_complexity := sapply(past_op_compls, function(x) {
-									      max(x)
-      } ) ] %>%
-      .[ (actions == "Unoptimized" | actions == "Optimized") , message_complexity := 0 ] %>%
+      .[, msg_compl := mapply(function(a, b, k) {
+        switch(k,
+               "Unoptimized" = {
+                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) # new opinion can be argued for with the mean deviation complexity of own opinion complexity 
+	       },
+               "Optimized" = {
+                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
+	       },
+               "Unoptimized_appeal" = {
+                 0
+	       },
+               "Optimized_appeal" = {
+                 0 
+	       }
+        )
+      }, a=past_opt_compls, b=op_compl, k=actions)] %>% # here, later also past_msg_compls
       .[ , assumption_to := ifelse( (.[, best_action] == "Unoptimized" | .[, best_action] == "Unoptimized_appeal") , opinion_from_y, opt_message_y)] %>%
       .[ , -c("opinion_from_y", "opt_message_y")] %>%
       setkey("from") %>%
@@ -556,7 +586,7 @@ rc_sh_modelInit <- function(sim) {
       .[ (best_action == "Both" | best_action == "Receive") ] %>% 
       .[ , -c("best_action", "actions") ] %>%
       .[copy(sim$actions_receive), on = c("agent_id")] %>%
-      .[ , complexity := sum(message_complexity) , by = agent_id ] %>% # sum is better than mean, because in case of Systematic, the agent would actually have to process ALL messages
+      .[ , complexity := sum(msg_compl) , by = agent_id ] %>% # sum is better than mean, because in case of Systematic, the agent would actually have to process ALL messages
       .[copy(sim$discourse_memory)[ , .(from, past_op_compls, past_msg_compls) ], on = c("agent_id", "from"), nomatch = 0L, allow.cartesian = TRUE ] %>%
       .[ , involvement := mean(c(past_op_compls, past_msg_compls)), by=agent_id ] %>%
       .[ actions == "Systematic" , util_score := - complexity + involvement , by = agent_id ] %>%
@@ -580,7 +610,7 @@ rc_sh_modelInit <- function(sim) {
       .[copy(sim$actions_receive), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>% 
       .[ best_action == actions ] %>% # table is no_agents*2 x 8 with sim$no_agents values in variable "from"
       .[ best_action == "Heuristic"] %>% # table is 1000 x 8 (condition 1 is true for all agents in init)
-      .[ , .(from, to, opinion_from, assumption_to, opt_message, op_compl, message_complexity, actions, best_action)] %>%
+      .[ , .(from, to, opinion_from, assumption_to, opt_message, op_compl, msg_compl, actions, best_action)] %>%
       .[ , message_popularity := mapply(function(a,b) {
         sum(
           sapply(a, function(x) {
@@ -593,7 +623,7 @@ rc_sh_modelInit <- function(sim) {
       .[ , max_util := max(acceptance_util), by=from ] %>%
       .[ , accepted := acceptance_util >= max_util ] %>%
       .[ accepted == TRUE ]  %>%
-      .[ , message_complexity := 0 ]
+      .[ , msg_compl := 0 ]
 
     seen <- vector()
     sim$opinion_updating_h[ , unique_within_from := TRUE ] 
@@ -620,7 +650,7 @@ rc_sh_modelInit <- function(sim) {
       .[copy(sim$actions_receive), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>% 
       .[ best_action == actions ] %>% # table is no_agents*2 x 8 with sim$no_agents values in variable "from"
       .[ best_action == "Systematic"] %>% # table is 1000 x 8 (condition 1 is true for all agents in init)
-      .[ , .(from, to, opinion_from, assumption_to, opt_message, op_compl, message_complexity, actions, best_action)] %>%
+      .[ , .(from, to, opinion_from, assumption_to, opt_message, op_compl, msg_compl, actions, best_action)] %>%
       .[copy(sim$discourse_memory), on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
       .[ , distance_to_past_opinions := mapply(function(a,b) {
         mean(
@@ -631,22 +661,21 @@ rc_sh_modelInit <- function(sim) {
       }, a=past_opinions, b=assumption_to)] %>%
       .[ , within_epsilon := abs(opinion_from - assumption_to) < params(sim)$rc_energy_model$epsilon] %>%
       .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_energy_model$self_incons_tolerance] %>%
-      .[ , well_argumented := message_complexity > op_compl ] %>%
+      .[ , well_argumented := msg_compl > op_compl ] %>%
       .[ within_epsilon == TRUE & self_consistent == TRUE & well_argumented == TRUE ] %>% # at this stage, some agents might be completely deleted from the table, because no messages sent to them fall within the bounds; this has no impact, e.g. for business computation later as it is corrected by merging with sim$discourse_memory (see UPDATE DISCOURSE_MEMORY); sim$opinion_updating only comes into play for assigning the new opinions to sim$agent_characteristics
       .[ , sum_assumptions := sum(assumption_to), by=from] %>%
       .[ , denominator := .N, by=from ] %>%
       .[ , opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
-      .[ , new_op_compl := sum(message_complexity) / .N , by=from ] %>%
+      .[ , new_op_compl := sum(msg_compl) / .N , by=from ] %>%
       .[ , 
       setnames("from", "agent_id") %>%
-      .[ , receiver_business := .N + sum(message_complexity) , by=from ] %>%
+      .[ , receiver_business := .N + sum(msg_compl) , by=from ] %>%
       .[ , .(agent_id, opinion_y, new_op_compl, receiver_business)]
 
     #################################
     #### UPDATE DISCOURSE_MEMORY ####
     #################################
     
-    # This line of code replicates the output for sim$opinion_updating to get measures of receiver_business (even if an agent chooses to receive, it is not clear how many messages it will receive) 
     sim$discourse_memory <- copy(sim$opinion_updating_s)[ , .(agent_id, receiver_business) ] %>%
       rbind(copy(sim$opinion_updating_h)[ , .(agent_id, receiver_business) ]) %>%
       setkey("agent_id") %>%
@@ -676,7 +705,7 @@ rc_sh_modelInit <- function(sim) {
     sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>% # produces NAs for not repoduced rows
       .[ , opinion := ifelse(is.na(opinion_y), opinion, opinion_y)] %>%
       .[ , op_compl := ifelse(is.na(opinion_y), op_compl, new_op_compl) ] %>%
-      .[ , -c("opinion_y")]
+      .[ , -c("opinion_y", "new_op_compl")]
 
     #### sim$agent_characteristics table specs at this point:
     # rowlength: sim$no_agents
@@ -689,16 +718,12 @@ rc_sh_modelInit <- function(sim) {
     # after a merge with sim$agent_characteristics, current energy can be computed as a sum of current energy, loss and the global restoration factor 
     sim$agent_characteristics <- copy(sim$actions_overall)[ , best_axn_overall := best_action][ , .(agent_id, best_axn_overall)] %>%
       unique() %>%
-      merge(copy(sim$actions_send)[ , best_axn_send := best_action][ , .(agent_id, best_axn_send)], by="agent_id", allow.cartesian = TRUE) %>%
-      unique() %>%
       merge(copy(sim$discourse_memory)[ , .(from, receiver_business, sender_business)], by.x = "agent_id", by.y = "from", allow.cartesian = TRUE) %>%
       unique() %>%
       .[ best_axn_overall == "Send" , energy_loss := sender_business ] %>%
       .[ best_axn_overall == "Receive", energy_loss := receiver_business ] %>%
       .[ best_axn_overall == "Both", energy_loss := sender_business + receiver_business ] %>%
       .[ best_axn_overall == "Nothing", energy_loss := 0 ] %>%
-      .[ best_axn_send == "Unoptimized", energy_loss := energy_loss ] %>%
-      .[ best_axn_send == "Optimized", energy_loss := energy_loss + sender_business ] %>%
       .[ , .(agent_id, energy_loss) ] %>%
       unique() %>%
       .[ , energy_loss := sum(energy_loss), by="agent_id" ] %>%
