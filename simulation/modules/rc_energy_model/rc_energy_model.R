@@ -412,8 +412,9 @@ rc_energy_modelInit <- function(sim) {
       .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>%
       .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
 
-    temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>%
-      unique()
+    temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>% 
+	    .[ , receiver_business := max(receiver_business), by=to] %>%
+	    unique() 
 
     sim$discourse_memory <- copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("from"), by.y = c("to"), all.x = TRUE) %>% # remerge it with receiver_business-less version to correspond to receiver business
@@ -990,8 +991,8 @@ rc_energy_modelStep <- function(sim) {
       .[ , -c("actions")] %>% # we need best_action further down
       unique() %>% # do something about business
       .[ , sender_business := .N, by = "from" ] %>% # generate business
-      .[ , sender_business := ifelse(best_action == "Optimized", sender_business*2, sender_business) ] %>% # generate business
-      .[ , receiver_business := .N, by = "to" ] %>% # generate business
+      .[ !is.na(best_action) , sender_business := ifelse(best_action == "Optimized", sender_business*2, sender_business) ] %>% # generate business
+      .[ !is.na(best_action) , receiver_business := .N, by = "to" ] %>% # generate business
       merge(sim$discourse_memory[ , -c("sender_business", "receiver_business", "assumption_to")], by=c("from", "to"), all=TRUE) %>% # get full row count back, following two lines resolve variable name conflicts
       .[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] %>% # generate business
       .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] %>% # generate business
@@ -1046,6 +1047,7 @@ rc_energy_modelStep <- function(sim) {
       .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] 
 
     temp <- copy(sim$discourse_memory)[ , .(to, receiver_business)] %>% 
+	    .[ , receiver_business := max(receiver_business), by=to] %>%
 	    unique() 
     
     sim$discourse_memory <-  copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
@@ -1118,7 +1120,7 @@ rc_energy_modelStep <- function(sim) {
       .[ best_action == actions ] %>%
       .[ (best_action == "Both" | best_action == "Receive") ]  %>%
       .[ , .(from, to, opinion_from, assumption_to, opt_message, actions, best_action) ] %>%
-      .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>%
+      .[sim$discourse_memory, on=c("from"), nomatch = 0L, allow.cartesian = TRUE] %>% # you need a different distance to past messages, merge on to for that; also, add receiver_business to the first merge
       .[ best_action == actions ] %>%
       .[ , distance_to_past_opinions := mapply(function(a,b) {
         mean(
