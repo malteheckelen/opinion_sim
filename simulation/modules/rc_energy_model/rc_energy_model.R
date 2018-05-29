@@ -1114,12 +1114,14 @@ rc_energy_modelStep <- function(sim) {
     
     # Receiving
 
+# TO DO: CLEAR NOMENCLATURE FOR FROM, TO ETC.!!!!!!!
+
     sim$opinion_updating <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
       unique() %>%
-      .[copy(actions_overall), on = c("to" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
+      .[copy(actions_overall), on = c("to" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>% # you filter all from-to links out where to is not in actions_receive anymore NO WRONG
       .[ best_action == actions ] %>%
       .[ (best_action == "Both" | best_action == "Receive") ]  %>%
-      .[ , .(from, to, opinion_from, assumption_to, opt_message, actions, best_action) ] %>%
+      .[ , .(from, to, opinion_from, assumption_to, opt_message, actions, best_action) ] %>% # as we only
       .[sim$discourse_memory, on=c("to"="from"), nomatch = 0L, allow.cartesian = TRUE] %>% # you need a different distance to past messages, merge on to for that; also, add receiver_business to the first merge
       .[ best_action == actions ] %>%
       .[ , distance_to_past_opinions := mapply(function(a,b) {

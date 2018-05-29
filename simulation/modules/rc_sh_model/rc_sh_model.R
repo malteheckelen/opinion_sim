@@ -1444,7 +1444,7 @@ rc_sh_modelStep <- function(sim) {
     sim$messages <- copy(sim$messages_temp) %>% # here from denotes the receiver
       .[sim$actions_send[ best_action == actions , .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>% 
       unique() %>%
-      merge(sim$discourse_memory[ , .(from, to, past_msg_compls, past_op_compls)], nomatch=0L, by.x=c("from", "to"), by.y=c("to", "from"), allow.cartesian=TRUE) %>% # here from denotes the receiver in sim$messages and the sender in sim$discourse_memory
+      merge(sim$discourse_memory[ , .(from, to, past_msg_compls, past_op_compls)], nomatch=0L, by=c("from"), allow.cartesian=TRUE) %>% # here from denotes the receiver in sim$messages and the sender in sim$discourse_memory
       .[ , past_msg_compls := as.character(past_msg_compls) ] %>% # this way we get the necessary metrics for computing the complexity with which opinion_from_y will be sent
       .[ , past_op_compls := as.character(past_op_compls) ] %>%
       unique() %>% 
@@ -1469,10 +1469,10 @@ rc_sh_modelStep <- function(sim) {
       .[ , assumption_to := ifelse( (.[, best_action] == "Unoptimized" | .[, best_action] == "Unoptimized_appeal") , opinion_from_y, opt_message_y)] %>%
       .[ , -c("opinion_from_y", "opt_message_y", "past_msg_compls", "past_op_compls")] %>%
       setkey("from") %>%
-      unique() # to recapitulate: from is the receiver in sim$messages, from this point on
+      unique() 
 
     # Receiving
-   sim$actions_receive_temp <- copy(sim$messages)[, agent_id := to][ , -c("to", "from", "actions", "best_action")] %>% # agent_id denotes receivers
+   sim$actions_receive_temp <- copy(sim$messages)[, agent_id := to][ , -c("agent_id")] %>% # agent_id denotes receivers
       unique() %>%
       .[copy(sim$actions_overall)[ , .(agent_id, best_action, actions)], on = c("agent_id"), nomatch=0L,  allow.cartesian = TRUE ] %>% # table is number of edges*8 x 8
       .[ best_action == actions ] %>% 
@@ -1525,6 +1525,7 @@ rc_sh_modelStep <- function(sim) {
     # Heuristic Mode
     
    if (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0) {
+	   
 	    sim$opinion_updating_h <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
 	      unique() %>%
 	      .[copy(sim$actions_receive), on = c("from" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>% 

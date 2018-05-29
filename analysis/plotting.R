@@ -30,3 +30,7 @@ out$data_collect %>%
   theme(legend.position="bottom")
 
 
+sim$data_collect %>%
+  ggplot(aes(time, opinions)) +
+  geom_point(size= 0.3, alpha=0.9, colour="dodgerblue3") +
+  theme_bw()
