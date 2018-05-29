@@ -1114,20 +1114,6 @@ rc_energy_modelStep <- function(sim) {
     
     # Receiving
 
-if (time(sim) == 2) {
-
-    shit <<- copy(sim$messages)[ , -c("actions", "best_action")] %>%
-      unique() %>%
-      .[copy(actions_overall), on = c("to" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
-      .[ best_action == actions ] %>%
-      .[ (best_action == "Both" | best_action == "Receive") ]  %>%
-      .[ , .(from, to, opinion_from, assumption_to, opt_message, actions, best_action) ] %>%
-      .[sim$discourse_memory, on=c("to"="from"), nomatch = 0L, allow.cartesian = TRUE] %>% # you need a different distance to past messages, merge on to for that; also, add receiver_business to the first merge
-      .[ best_action == actions ] 
-
-
-}
-
     sim$opinion_updating <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
       unique() %>%
       .[copy(actions_overall), on = c("to" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
@@ -1162,7 +1148,7 @@ if (time(sim) == 2) {
       .[ , .(agent_id, opinion_y)] %>%
       setkey("agent_id") %>%
       unique()
-yomydude <<- sim$opinion_updating
+
     if( length(sim$actions_overall[ best_action %in% c("Nothing") , best_action ]) > 0  ) {
 
 	  sim$opinion_updating <- copy(sim$messages)[ , -c("actions", "best_action")] %>%
