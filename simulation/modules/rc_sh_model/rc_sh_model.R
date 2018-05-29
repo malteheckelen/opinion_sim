@@ -550,8 +550,8 @@ print("after sending strategies, before discmem")
       setnames(old=c("opinion_from", "opt_message"), new=c("opinion_from_y", "opt_message_y")) %>%
       unique() %>%
       setnames(old = c("from", "to"), new = c("to", "from")) %>%
-      .[ , .(to, opinion_from_y, opt_message_y)] %>% 
-      .[sim$messages, on="to", nomatch=0L, allow.cartesian=TRUE] %>%
+      .[ , .(from, to, opinion_from_y, opt_message_y)] %>% 
+      .[sim$messages, on=c("from", "to"), nomatch=0L, allow.cartesian=TRUE] %>%
       unique()
 
     sim$messages <- copy(sim$messages_temp) %>%
@@ -687,17 +687,19 @@ print("sending 2")
 	      .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_sh_model$self_incons_tolerance] %>%
 	      .[ , well_argumented := msg_compl > op_compl ] %>%
 	      .[ within_epsilon == TRUE & self_consistent == TRUE & well_argumented == TRUE ] %>% # at this stage, some agents might be completely deleted from the table, because no messages sent to them fall within the bounds; this has no impact, e.g. for business computation later as it is corrected by merging with sim$discourse_memory (see UPDATE DISCOURSE_MEMORY); sim$opinion_updating only comes into play for assigning the new opinions to sim$agent_characteristics
-              .[ , .(opinion_from, from, within_epsilon, self_consistent, well_argumented, receiver_business, msg_compl) ] %>%
+              .[ , .(opinion_from, assumption_to, from, within_epsilon, self_consistent, well_argumented, receiver_business, msg_compl) ] %>%
               unique %>%
 	      .[ , sum_assumptions := sum(assumption_to), by=from] %>%
 	      .[ , denominator := .N, by=from ] %>%
 	      .[ , opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
 	      .[ , new_op_compl := sum(msg_compl) / .N , by=from ] %>%
 	      setnames("from", "agent_id") %>%
-	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business)] %>%
+	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business, msg_compl)] %>%
 	      unique %>%
 	      .[ , receiver_business := as.double(receiver_business) ] %>%
-	      .[ , receiver_business := as.double(.N) ,  by=agent_id ] 
+	      .[ , receiver_business := as.double(.N) ,  by=agent_id ] %>%
+	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business)] %>%
+	      unique
 
     } 
     
@@ -862,7 +864,7 @@ print("opinion updating")
     .[ , opinion_y := sapply(past_opinions, function(x) { median(x) }) ] %>%
     .[, new_op_compl := op_compl + ifelse(mean(c(unlist(past_op_compls)) - op_compl) > 0, mean(c(unlist(past_op_compls)) - op_compl), 0) ]
     setnames("from", "agent_id") %>%
-    .[ , .(agent_id, opinion_y)] %>%
+    .[ , .(agent_id, opinion_y, new_op_compl)] %>%
     setkey("agent_id") %>%
     unique() %>%
     rbind(sim$opinion_updating)
@@ -953,6 +955,7 @@ rc_sh_modelStep <- function(sim) {
   #################################################################
   #### BUILD sim$actions_overall AND FIND BEST OVERALL ACTIONS ####
   #################################################################
+
 
   # The code works in X steps
   # Step 1: Get all the necessary records of the discourse from sim$discourse_memory
@@ -1422,19 +1425,27 @@ rc_sh_modelStep <- function(sim) {
       .[ , past_msg_compls := sapply(past_msg_compls, function(x) list(eval(parse(text = x))))] %>%
       .[ , past_op_compls := sapply(past_op_compls, function(x) list(eval(parse(text = x))))]
    
-    sim$messages_temp <- copy(sim$messages)[ , .(from, to, opinion_from, opt_message)] %>%
+    sim$messages_temp <- copy(sim$messages)[ , .(from, to, opinion_from, opt_message)] %>% # at this point from is still from
       setnames(old=c("opinion_from", "opt_message"), new=c("opinion_from_y", "opt_message_y")) %>%
       unique() %>%
       setnames(old = c("from", "to"), new = c("to", "from")) %>%
-      .[ , .(to, opinion_from_y, opt_message_y)] %>% 
-      .[sim$messages, on="to", nomatch=0L, allow.cartesian=TRUE] %>%
+      .[ , .(from, to, opinion_from_y, opt_message_y)] %>% 
+      .[sim$messages, on=c("from", "to"), nomatch=0L, allow.cartesian=TRUE] %>% # now from denotes the receiver in messages_temp, while op_from_y etc denote the respective variables for the messages possibly sent by to
       unique()
 
-    sim$messages <- copy(sim$messages_temp) %>%
-      .[sim$actions_send[ best_action == actions , .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>%
+    # from and to is first switched
+    # opinion and optimized_message is renamed
+    # remerge with sim$messages: the renamed opinions are those of the receiver
+    # they are used to compute the message sent by from as well as complexity
+    # then the renamed opinions and messages of the receiver are deleted
+    # the new message by from is assigned to assumption_to
+    # this will be used in opinion_updating in conjunction with to
+
+    sim$messages <- copy(sim$messages_temp) %>% # here from denotes the receiver
+      .[sim$actions_send[ best_action == actions , .(agent_id, actions, best_action)], nomatch=0L, on=c("from" = "agent_id"), allow.cartesian=TRUE] %>% 
       unique() %>%
-      merge(sim$discourse_memory[ , .(from, to, past_msg_compls, past_op_compls)], nomatch=0L, by.x=c("from", "to"), by.y=c("to", "from"), allow.cartesian=TRUE) %>% 
-      .[ , past_msg_compls := as.character(past_msg_compls) ] %>%
+      merge(sim$discourse_memory[ , .(from, to, past_msg_compls, past_op_compls)], nomatch=0L, by.x=c("from", "to"), by.y=c("to", "from"), allow.cartesian=TRUE) %>% # here from denotes the receiver in sim$messages and the sender in sim$discourse_memory
+      .[ , past_msg_compls := as.character(past_msg_compls) ] %>% # this way we get the necessary metrics for computing the complexity with which opinion_from_y will be sent
       .[ , past_op_compls := as.character(past_op_compls) ] %>%
       unique() %>% 
       .[ , past_msg_compls := sapply(past_msg_compls, function(x) list(eval(parse(text = x))))] %>%
@@ -1458,16 +1469,16 @@ rc_sh_modelStep <- function(sim) {
       .[ , assumption_to := ifelse( (.[, best_action] == "Unoptimized" | .[, best_action] == "Unoptimized_appeal") , opinion_from_y, opt_message_y)] %>%
       .[ , -c("opinion_from_y", "opt_message_y", "past_msg_compls", "past_op_compls")] %>%
       setkey("from") %>%
-      unique()
+      unique() # to recapitulate: from is the receiver in sim$messages, from this point on
 
     # Receiving
-   sim$actions_receive_temp <- copy(sim$messages)[, agent_id := from][ , -c("from", "actions", "best_action")] %>%
+   sim$actions_receive_temp <- copy(sim$messages)[, agent_id := to][ , -c("to", "from", "actions", "best_action")] %>% # agent_id denotes receivers
       unique() %>%
       .[copy(sim$actions_overall)[ , .(agent_id, best_action, actions)], on = c("agent_id"), nomatch=0L,  allow.cartesian = TRUE ] %>% # table is number of edges*8 x 8
       .[ best_action == actions ] %>% 
       .[ (best_action == "Both" | best_action == "Receive") ] # HERE YOU HAVE TO CONTROL THE FLOW; SOMETIMES THE INTERSECTION OF SENDERS WHO SEND TO RECEIVERS WHO CHOSE TO RECEIVE IS NIL
 
-   if (nrow(sim$actions_receive_temp) > 0) {
+   if (nrow(sim$actions_receive_temp) > 0) { # if there are receivers who choose to receive
 
  # TO DO: MAKE CONTROL FLOW AND FIX THE BUSINESS FOR RECEIVERS AND SENDERS, SOMETHINGS WRONG THERE 
 
@@ -1533,7 +1544,7 @@ rc_sh_modelStep <- function(sim) {
 	      .[copy(sim$agent_characteristics)[ , .(agent_id, group, expert) ], on=c("from"="agent_id"), nomatch=0L, allow.cartesian=TRUE] %>%
 	      .[ , acceptance_util := - message_popularity + same_group + expert ] %>%
 	      .[ , max_util := max(acceptance_util), by=from ] %>%
-	      .[ , accept := acceptance_util >= max_util ] %>%
+	      .[ , accept := acceptance_util >= max_util ] %>% # test here
 	      .[ accept == TRUE  , msg_compl := 0 ]
 
 	    seen <- vector()
@@ -1590,17 +1601,19 @@ print("before receiving s")
 	      .[ , well_argumented := msg_compl > op_compl ] %>%
 	      .[ within_epsilon == TRUE & self_consistent == TRUE & well_argumented == TRUE & trust == TRUE , accept := TRUE ] %>% # at this stage, some agents might be completely deleted from the table, because no messages sent to them fall within the bounds; this has no impact, e.g. for business computation later as it is corrected by merging with sim$discourse_memory (see UPDATE DISCOURSE_MEMORY); sim$opinion_updating only comes into play for assigning the new opinions to sim$agent_characteristics
 	      .[ within_epsilon == FALSE & self_consistent == FALSE & well_argumented == FALSE  & trust == FALSE , accept := FALSE ] %>% # at this stage, some agents might be completely deleted from the table, because no messages sent to them fall within the bounds; this has no impact, e.g. for business computation later as it is corrected by merging with sim$discourse_memory (see UPDATE DISCOURSE_MEMORY); sim$opinion_updating only comes into play for assigning the new opinions to sim$agent_characteristics
-              .[ , .(opinion_from, from, within_epsilon, self_consistent, well_argumented, trust, accept, receiver_business) ] %>%
+              .[ , .(opinion_from, assumption_to, msg_compl, from, within_epsilon, self_consistent, well_argumented, trust, accept, receiver_business) ] %>%
               unique %>%
 	      .[ accept == TRUE, sum_assumptions := sum(assumption_to), by=from] %>%
 	      .[ accept == TRUE, denominator := .N, by=from ] %>%
 	      .[ accept == TRUE, opinion_y := ifelse( denominator != 0, sum_assumptions / denominator, opinion_from )] %>%
 	      .[ accept == TRUE, new_op_compl := sum(msg_compl) / .N , by=from ] %>%
 	      setnames("from", "agent_id") %>%
-	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business, accept)] %>%
+	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business, msg_compl, accept)] %>%
 	      unique %>%
 	      .[ , receiver_business := as.double(receiver_business) ] %>%
-	      .[ , receiver_business := sum(as.double(.N) , as.double(.N)*mean(msg_compl)) , by=agent_id ]
+	      .[ , receiver_business := sum(as.double(.N) , as.double(.N)*mean(msg_compl)) , by=agent_id ] %>%
+	      .[ , .(agent_id, opinion_y, new_op_compl, receiver_business, accept)] %>%
+	      unique
 
     } 
     
@@ -1611,13 +1624,20 @@ print("before receiving s")
 
    if ( (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0 && nrow(sim$actions_receive[ best_action == "Systematic" ]) > 0 ) )  {
 
+
+    sim$discourse_memory_business <- copy(sim$messages)[ , .(from, to)] %>%
+      unique() %>%
+      .[ , receiver_business_alt := .N, by=from ]
+
 	sim$discourse_memory <- copy(sim$opinion_updating_s)[ , .(agent_id, receiver_business) ] %>%
 	      rbind(copy(sim$opinion_updating_h)[ , .(agent_id, receiver_business) ]) %>%
 	      setkey("agent_id") %>%
 	      unique() %>%
 	      .[copy(sim$discourse_memory)[ , -c("receiver_business") ], on=c("agent_id"="from") ] %>%
+	      .[copy(sim$discourse_memory_business), on=c("agent_id"="from") ] %>%
 	      setnames("agent_id", "from") %>%
-	      .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business ) ]  
+	      .[ , receiver_business := ifelse(is.na(receiver_business), receiver_business_alt, receiver_business ) ]  %>%
+	      .[ , -c("receiver_business_alt") ]
 
     sim$opinion_updating <- sim$opinion_updating_s[ accept==TRUE , .(agent_id, opinion_y, new_op_compl) ] %>%
       rbind(sim$opinion_updating_h[ accept==TRUE , .(agent_id, opinion_y, new_op_compl) ] ) %>%
@@ -1626,26 +1646,39 @@ print("before receiving s")
 
       } else {
 	   if ( (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0 ) ) {
+fuckmythroatyoustud <<- sim$discourse_memory
+    sim$discourse_memory_business <- copy(sim$messages)[ , .(from, to)] %>%
+      unique() %>%
+      .[ ,  receiver_business_alt := .N, by=from ]
 
 	sim$discourse_memory <- copy(sim$opinion_updating_h)[ , .(agent_id, receiver_business) ] %>%
 	      setkey("agent_id") %>%
 	      unique() %>%
 	      .[copy(sim$discourse_memory)[ , -c("receiver_business") ], on=c("agent_id"="from") ] %>%
+	      .[copy(sim$discourse_memory_business), on=c("agent_id"="from"), all.y=T ] ->> giveittomemrheckelen
 	      setnames("agent_id", "from") %>%
-	      .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business ) ]  
-
+	      .[ , receiver_business := ifelse(is.na(receiver_business), receiver_business_alt, receiver_business ) ]  %>%
+	      .[ , -c("receiver_business_alt") ]
+# BIG PROBLEM: HOW CAN IT BE THAT AGENT 14 IS JUST A RECEIVER BUT IS LISTED IN sim$messages UNDER to?
     sim$opinion_updating <- sim$opinion_updating_h[ accept==TRUE , .(agent_id, opinion_y, new_op_compl) ] %>%
       setkey("agent_id") %>%
       unique() 
 
 	   } else {
 
+
+    sim$discourse_memory_business <- copy(sim$messages)[ , .(from, to)] %>%
+      unique() %>%
+      .[ ,  receiver_business_alt := .N, by=from ]
+
 	sim$discourse_memory <- copy(sim$opinion_updating_s)[ , .(agent_id, receiver_business) ] %>%
 	      setkey("agent_id") %>%
 	      unique() %>%
 	      .[copy(sim$discourse_memory)[ , -c("receiver_business") ], on=c("agent_id"="from") ] %>%
+	      .[copy(sim$discourse_memory_business), on=c("agent_id"="from") ] %>%
 	      setnames("agent_id", "from") %>%
-	      .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business ) ]  
+	      .[ , receiver_business := ifelse(is.na(receiver_business), receiver_business_alt, receiver_business ) ]  %>%
+	      .[ , -c("receiver_business_alt") ]
 
     sim$opinion_updating <- sim$opinion_updating_s[ accept == TRUE, .(agent_id, opinion_y, new_op_compl) ] %>%
       setkey("agent_id") %>%
@@ -1711,7 +1744,7 @@ print("opinion updating")
     ##################################################
     #### BUSINESS UPDATE FOR sim$discourse_memory ####
     ##################################################
-
+    
     # here, the new opinion present in sim$agent_characteristics is reassigned to sim$discourse_memory by merging
     sim$discourse_memory <- sim$agent_characteristics[ , .(agent_id, opinion) ] %>%
       .[sim$discourse_memory[ , -c("opinion")], on=c("agent_id" = "from") ] %>%
@@ -1761,7 +1794,7 @@ print("opinion updating")
     .[ , opinion_y := sapply(past_opinions, function(x) { median(x) }) ] %>%
     .[, new_op_compl := op_compl + ifelse(mean(c(unlist(past_op_compls)) - op_compl) > 0, mean(c(unlist(past_op_compls)) - op_compl), 0) ] %>%
     setnames("from", "agent_id") %>%
-    .[ , .(agent_id, opinion_y)] %>%
+    .[ , .(agent_id, opinion_y, new_op_compl)] %>%
     setkey("agent_id") %>%
     unique()
 
@@ -1802,7 +1835,7 @@ print("opinion updating")
     .[ , opinion_y := sapply(past_opinions, function(x) { median(x) }) ] %>%
     .[, new_op_compl := op_compl + ifelse(mean(c(unlist(past_op_compls)) - op_compl) > 0, mean(c(unlist(past_op_compls)) - op_compl), 0) ] %>%
     setnames("from", "agent_id") %>%
-    .[ , .(agent_id, opinion_y)] %>%
+    .[ , .(agent_id, opinion_y, new_op_compl)] %>%
     setkey("agent_id") %>%
     unique() 
 
