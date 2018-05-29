@@ -32,7 +32,7 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "small_world", "rc_sh_model", "data_collection")
+modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
 
 times <- list(start = 0, end = 100)
 
@@ -64,22 +64,22 @@ parameters <- list(
     restoration_factor = 30,
     opinion_memory_depth = 10,
     message_memory_depth = 20,
-    energy_params_memory_depth = 100,
-    ),
-   rc_sh_model = list(
-    epsilon = 0.3,
-    other_incons_tolerance = 0.4,
-    self_incons_tolerance = 0.2,
-    energy_level = 100,
-    restoration_factor = 30,
-    opinion_memory_depth = 10,
-    message_memory_depth = 20,
-    energy_params_memory_depth = 100,
-    no_groups = 4,
-    expert_percentage = 0.05,
-    sigma_complexity = 1.75,
-    argumentation_memory_depth = 10
-  )
+    energy_params_memory_depth = 100#,
+    )#,
+  #rc_sh_model = list(
+  #epsilon = 0.3,
+  #other_incons_tolerance = 0.6,
+  #self_incons_tolerance = 0.4,
+  #energy_level = 100,
+  #restoration_factor = 60,
+  #opinion_memory_depth = 10,
+  #message_memory_depth = 20,
+  #energy_params_memory_depth = 100,
+  #no_groups = 4,
+  #expert_percentage = 0.05,
+  #sigma_complexity = 1.75,
+  #argumentation_memory_depth = 10
+  #)
 )
 
 paths <- getPaths()
