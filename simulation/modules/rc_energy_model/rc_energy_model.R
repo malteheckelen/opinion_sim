@@ -734,7 +734,7 @@ yoyoyo <<- sim$discourse_memory
   # Step 3: Compute utilities
   # Step 4: Select max by first casting to wide and then melting back to long
   sim$actions_overall <- copy(sim$discourse_memory) %>%
-    .[ , max_send_energy_loss := .N*2, by = sender ] %>%
+    .[ , max_send_energy_loss := .N, by = sender ] %>%
     .[ , max_receive_energy_loss := .N, by = sender ] %>%
     .[ , .(sender, past_self_incohesion, past_nbh_incohesion, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion, max_send_energy_loss, max_receive_energy_loss)] %>%
     .[(sim$agent_characteristics[ , .(agent_id, energy)] %>% unique()), on=c("sender" = "agent_id") ] %>%
@@ -778,7 +778,7 @@ yoyoyo <<- sim$discourse_memory
     }, x=past_sender_business )] %>%
     .[ , both_business_mean := mapply(function(x, y) {
 
-      sum( mean(unlist(x)), mean(unlist(y))) 
+      sum( mean(unlist(x)), mean(unlist(y)))
 
     }, x=past_sender_business, y=past_receiver_business )] %>%
     .[ , both_business_mean_index := mapply(function(x, y, z, a) {
