@@ -754,14 +754,14 @@ yoyoyo <<- sim$discourse_memory
     }, x=past_nbh_incohesion )] %>%
     .[ , rec_business_mean_index := mapply(function(x, y) {
 
-      is_na <- sum(unlist(x)) / y
+      is_na <- sum(unlist(x)) / (y*length(unlist(x)))
       
       ifelse(is.na(is_na), 0, is_na)
 
     }, x=past_receiver_business, y=max_receive_energy_loss )] %>%
     .[ , send_business_mean_index := mapply(function(x, y) {
 
-      is_na <- sum(unlist(x)) / y
+      is_na <- sum(unlist(x)) / (y*length(unlist(x)))
       
       ifelse(is.na(is_na), 0, is_na)
 
@@ -785,7 +785,7 @@ yoyoyo <<- sim$discourse_memory
 
       numerator <- sum( c(unlist(x), unlist(y)) )
 
-      denominator <- z + a
+      denominator <- z*length(unlist(y)) + a*length(unlist(x))
 
       is_na <- numerator / denominator
       
@@ -799,19 +799,27 @@ yoyoyo <<- sim$discourse_memory
     # the third part in brackets represents the possible self incohesion; this is also diminished by a factor constructed in the same way as above
     # the fourth part in brackets represents the possible neighborhood incohesion; this is also diminished by a factor constructed in the same way as above
     # what sign the third and fourth part have depends on the strategy: Sending does help with neighborhood incohesion, but not self incohesion while Receiving helps with high self incohesion (as the agent doesn't say anything this round), but can't help with high neighborhood incohesion
+    # Several Issues: 1. Negative Energy will be actually increased if reduced by the factor, 2. Both is suboptimal, because it will always be bigger; 2 might be solved by solving 1 though
+    .[ actions == "Send" , projected_energy := (( energy - send_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor)) * (1 - send_business_mean_index) ] %>%
+    .[ actions == "Receive" , projected_energy := (( energy - rec_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor)) * (1 - rec_business_mean_index) ] %>%
+    .[ actions == "Both" , projected_energy := 
+    (( energy - send_business_mean - rec_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor)) * (1 - (send_business_mean_index + rec_business_mean_index)) ]  %>%
+    .[ , projected_energy := ifelse(is.na(projected_energy), 0, projected_energy) ] %>%
+    .[ , self_nbh_inc_ratio := ( self_incohesion * (psi_mean_index) ) / ( nbh_incohesion * (pni_mean_index) ) ] %>%
+    .[ , nbh_self_inc_ratio := ( nbh_incohesion * (pni_mean_index) )  / ( self_incohesion * (psi_mean_index) ) ] %>%
+    .[ , self_incohesion := ifelse(self_nbh_inc_ratio*self_incohesion >= 1, 1, ifelse( self_nbh_inc_ratio*self_incohesion <= 0, 0, self_nbh_inc_ratio*self_incohesion ) ) ] %>%
+    .[ , nbh_incohesion := ifelse(nbh_self_inc_ratio*nbh_incohesion >= 1, 1, ifelse( nbh_self_inc_ratio*nbh_incohesion <= 0, 0, nbh_self_inc_ratio*nbh_incohesion ) ) ] %>%
+    .[ , max_proj_energy := max(projected_energy) , by=agent_id] %>%
+    # problems here: max proj en can never go below 0 because its a fraction of possible energy
+    # also, trust isnt implemented at the moment and needs to
     .[ actions == "Send", util_score :=
-         (( energy - send_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - send_business_mean_index) -
-         ( self_incohesion * (psi_mean_index) ) +
-         ( nbh_incohesion * (pni_mean_index) )] %>%
+         ifelse(projected_energy <= 0, 0, projected_energy) * (1 - self_incohesion) ] %>%
     .[ actions == "Receive", util_score := 
-         (( energy - rec_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - rec_business_mean_index) +
-         ( self_incohesion * (psi_mean_index) ) -
-         ( nbh_incohesion * (pni_mean_index) )] %>%
+         ifelse(projected_energy <= 0, 0, projected_energy) * ( 1 - nbh_incohesion ) ] %>%
     .[ actions == "Both", util_score :=  
-         (( energy - both_business_mean) / ( energy + params(sim)$rc_energy_model$restoration_factor )) * (1 - both_business_mean_index) +
-         ( self_incohesion * (psi_mean_index) * 0.5 ) +
-         ( nbh_incohesion * (pni_mean_index) * 0.5 )] %>%
-    .[ actions == "Nothing", util_score := ifelse( energy < vec_min(c(send_business_mean, rec_business_mean)), max(util_score)+100, min(util_score)-100) ] %>%
+         ifelse(projected_energy <= 0, 0, projected_energy) * ( 1 - abs(self_incohesion - nbh_incohesion) ) ] %>%
+    .[ actions == "Nothing", util_score := ifelse( ( energy - send_business_mean <= 0 | energy - rec_business_mean <= 0) ,
+	    max(util_score)+10000, min(util_score)-10000) ] %>%
     .[ , -c("past_self_incohesion", "past_nbh_incohesion", "past_receiver_business", "past_sender_business") ] %>%
     unique() 
 
@@ -1066,7 +1074,7 @@ whatsup <<- sim$actions_overall
     sim$discourse_memory <-  copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("sender"), by.y = c("receiver"), all.x = TRUE) %>% # remerge it with receiver_business-less version to correspond to receiver business # remerge it with receiver_business-less version to correspond to receiver business
       .[ , nbh_incohesion := vec_get_nbh_incohesion(sender) ] %>%
-      .[ , self_incohesion := vec_get_self_incohesion( receiver ) ] %>%
+      .[ , self_incohesion := vec_get_self_incohesion( sender ) ] %>%
       .[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                             mapply(function(x, y) {
                                               list(c(unlist(x), y))
