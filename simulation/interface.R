@@ -38,7 +38,8 @@ times <- list(start = 0, end = 100)
 
 parameters <- list(
   basic_setup = list(
-    opinion_distribution = "uniform",
+    mu_opinion_distribution = 0,
+    sigma_opinion_distribution = 0.3,
     no_agents = 50
     ),
   small_world = list(
@@ -58,13 +59,14 @@ parameters <- list(
   #)#,
   rc_energy_model = list(
     epsilon = 0.3,
-    other_incons_tolerance = 0.4,
-    self_incons_tolerance = 0.2,
-    energy_level = 100,
+    other_incons_tolerance = 0.8,
+    self_incons_tolerance = 1,
+    energy_level = 30,
     restoration_factor = 30,
     opinion_memory_depth = 10,
     message_memory_depth = 20,
-    energy_params_memory_depth = 100#,
+    energy_params_memory_depth = 100,
+    initial_opinion_confidence = 0.3
     )#,
   #rc_sh_model = list(
   #epsilon = 0.3,
