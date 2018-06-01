@@ -16,8 +16,9 @@ defineModule(sim, list(
   parameters = bind_rows(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
-    defineParameter("opinion_distribution", "character", "uniform", NA, NA, "The random probability distribution for initial opinion assignment."),
-    defineParameter("spread", "numeric", 0.0, NA, NA, "The spread of the opinion distribution (sd), if applicable.")
+    defineParameter("sigma_opinion_distribution", "numeric", 1, NA, NA, "The sigma parameter of the lognormal opinion distribution."),
+    defineParameter("mu_opinion_distribution", "numeric", 1, NA, NA, "The mu parameter of the lognormal opinion distribution.")
+
   ),
   outputObjects = bind_rows(
     createsOutput("no_agents", "numeric", "The number of agents."),
@@ -43,23 +44,10 @@ basic_setupInit <- function(sim) {
     agent_id = seq(1, sim$no_agents, 1),
     opinion = rep(1, sim$no_agents)
     
-  )
-  
-  switch (
-    params(sim)$basic_setup$opinion_distribution, 
-    "uniform" = {
-      
-      sim$agent_characteristics$opinion <- runif(sim$no_agents, 0, 1)
-      #plot(density(sim$agent_characteristics$opinion))
-      
-    },
-    "normal" = {
-      
-      sim$agent_characteristics$opinion <- rnorm(sim$no_agents, 0.5, spread)
-      
-    }
-    
-  )
+  ) %>%
+  data.table %>%
+  .[ , opinion := rlogitnorm(params(sim)$basic_setup$sigma_opinion_distribution, params(sim)$basic_setup$sigma_opinion_distribution, params(sim)$basic_setup$no_agents) ]
  
   return(invisible(sim))
+
 }
