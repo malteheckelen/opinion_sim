@@ -802,7 +802,7 @@ print(sim$discourse_memory$past_receiver_business[1])
     .[ actions == "Receive", util_score := 
          ifelse(projected_energy <= 0, 0, projected_energy) + ( 1 - nbh_incohesion ) ] %>%
     .[ actions == "Both", util_score :=  
-         ifelse(projected_energy <= 0, 0, projected_energy) + self_incohesion + nbh_incohesion + control ] %>%
+         ifelse(projected_energy <= 0, 0, projected_energy) + control + ( ( self_incohesion + nbh_incohesion ) * ( 1 - abs( self_incohesion - nbh_incohesion) ) ) ] %>%
     .[ actions == "Nothing", util_score := ifelse( ( energy - sender_business <= 0 | energy - receiver_business <= 0) ,
 	    max(util_score)+10000, min(util_score)-10000) ] %>%
     .[ , -c("past_self_incohesion", "past_nbh_incohesion", "past_receiver_business", "past_sender_business") ] %>%
