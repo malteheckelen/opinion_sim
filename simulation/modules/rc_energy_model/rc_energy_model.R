@@ -335,6 +335,7 @@ rc_energy_modelInit <- function(sim) {
 
     sim$discourse_memory <- copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("sender"), by.y = c("receiver"), all.x = TRUE) %>% 
+      .[ , -c("receiver") ] %>%
       .[ , past_receiver_business := ifelse( !is.na(receiver_business), sapply(receiver_business, function(x) list(x) ), 0 ) ] %>%
       .[ , past_sender_business := ifelse( !is.na(sender_business), sapply(sender_business, function(x) list(x) ), 0 ) ] %>%
       .[ , nbh_incohesion := vec_get_nbh_incohesion(sender ) ] %>%
@@ -409,7 +410,7 @@ rc_energy_modelInit <- function(sim) {
     ######################################
 
     # merge with sim$opinion_updating, assign new opinion if applicable
-    sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>% # produces NAs for not repoduced rows
+    sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
       .[ , opinion := ifelse(is.na(opinion_receiver_new), opinion, opinion_receiver_new)] %>%
       .[ , -c("opinion_receiver_new")]
 
@@ -447,7 +448,6 @@ rc_energy_modelInit <- function(sim) {
     #### UPDATING OF ENERGY IN CASE OF NO ACTION ####
     #################################################
 
-    # the past_receiver_business and past_sender_business needs to be updated with 0 business for this round
     sim$discourse_memory <- copy(sim$discourse_memory) %>%
       .[ , receiver_business := 0 ] %>%
       .[ , sender_business := 0 ] %>%
@@ -468,7 +468,6 @@ rc_energy_modelInit <- function(sim) {
                                           }, x=past_sender_business, y=sender_business)
       )]
 
-    # sim$agent_characteristics$energy is not diminished, but the amount of the restoration factor is added
     sim$agent_characteristics <- sim$agent_characteristics %>%
       .[ , energy := energy + params(sim)$rc_energy_model$restoration_factor ]
 
