@@ -301,10 +301,17 @@ rc_energy_modelInit <- function(sim) {
       .[ , receiver_business := .N, by = "receiver" ] %>% 
       merge(sim$discourse_memory[ , -c("sender_business", "receiver_business", "assumption_receiver")], by=c("sender"), all.x=TRUE)%>%
       .[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] %>% 
-      .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] %>% 
+      .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] %>%
       .[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
-                                   list(opinion_sender[[1]]),
-                                   list(opt_message[[1]]))] %>%
+                                   opinion_sender %>% list(),
+                                   opt_message %>% list())] %>%
+      .[ , past_messages := mapply(function(x,y,z) {
+
+	      ifelse(x == "Unoptimized",
+		      y,
+		      z)
+
+				   }, x=best_action, y=opinion_sender, z=opt_message) ] %>%
       .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
                                    mapply(function(x, y) {
                                      list(c(unlist(x), y))
