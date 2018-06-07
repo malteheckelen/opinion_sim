@@ -774,9 +774,7 @@ rc_sh_modelInit <- function(sim) {
 rc_sh_modelStep <- function(sim) {
 
   print(time(sim))
- if (time(sim) == 4) { check_three_actions_overall <<- sim$actions_overall } 
- if (time(sim) == 3) { check_three_discmem_last  <<- sim$discourse_memory } 
- if (time(sim) == 2) { check_two_discmem_last  <<- sim$discourse_memory } 
+
   ########################
   #### REBUILD TABLES ####
   ########################
@@ -815,7 +813,6 @@ rc_sh_modelStep <- function(sim) {
     data.table() %>%
     setnames(old = c("from", "to"), new = c("receiver", "sender"))
 
-  # current opinions are copied from sim$agent_characteristics
   sim$messages <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
@@ -829,9 +826,6 @@ rc_sh_modelStep <- function(sim) {
   #### CONSTRUCT CHOSEN_ACTIONS TABLE ####
   ########################################
 
-  # make data.table for chosen_actions for notation of subj. optimal actions
-  # these are selectors for the actions to be executed by an agent
-  # gets manipulated and rebuilt over course of each round 
   sim$chosen_actions <- tibble(
 
     agent_id = rep(agent_characteristics$agent_id, each=3),
@@ -845,7 +839,7 @@ rc_sh_modelStep <- function(sim) {
   #################################################################
   #### BUILD sim$actions_overall AND FIND BEST OVERALL ACTIONS ####
   #################################################################
-if (time(sim) == 4) { check_four_actions_overall <<- sim$actions_overall }
+
   sim$actions_overall <- copy(sim$messages)[ , .(sender, receiver)] %>%
     .[ , max_send_energy_loss := .N*2, by = sender ] %>%
     .[ , max_receive_energy_loss := .N*2, by = receiver] %>%
@@ -1038,15 +1032,11 @@ if (time(sim) == 4) { check_four_actions_overall <<- sim$actions_overall }
     .[ , -c("assumption_receiver", "opt_message")]
   
 
-  if (time(sim) == 1) { check_one  <<- sim$actions_overall }
-  if (time(sim) == 2) { check_two  <<- sim$actions_overall }
-  if (time(sim) == 3) { check_three  <<- sim$actions_overall }
-    print(table(sim$chosen_actions$best_action))
-  if( length(sim$actions_overall[ best_action %in% c("Both", "Send") , best_action ] > 0 ) ) {
-   
     ###############################################################
     #### COMPUTE SENDING UTILITIES AND CHOOSE MAX UTIL ACTIONS ####
     ###############################################################
+
+   if( length(sim$actions_overall[ best_action %in% c("Both", "Send") , best_action ] > 0 ) ) {
 
     sim$actions_send <- copy(sim$messages) %>%
       .[copy(sim$actions_overall), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] %>%
@@ -1196,9 +1186,11 @@ if (time(sim) == 4) { check_four_actions_overall <<- sim$actions_overall }
       .[ , -c("best_action.x", "best_action.y")]
 
     print(table(sim$chosen_actions$best_action))
+
     #####################################
     #### UPDATE sim$discourse_memory ####
     #####################################
+
     sim$send_busy <- copy(sim$actions_send)[ , -c("util_score")] %>%
       .[copy(sim$messages)[ , .(sender, receiver, opt_message) ], on = c("agent_id" = "sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
       setnames("agent_id", "sender") %>%
@@ -1215,27 +1207,10 @@ if (time(sim) == 4) { check_four_actions_overall <<- sim$actions_overall }
 	    .[ , receiver_business := max(receiver_business), by=receiver] %>%
 	    unique() 
 
-if (time(sim) == 2) { 
-	check_send <<- sim$send_busy
-	check_receive <<- sim$receive_busy
-	check_mem_two <<- sim$discourse_memory
-}
-if (time(sim) == 3) { 
-	check_send_three <<- sim$send_busy
-	check_receive_three <<- sim$receive_busy
-	check_mem_two_three <<- sim$discourse_memory
-}
     sim$discourse_memory <- copy(sim$discourse_memory)[ , -c("sender_business", "receiver_business")] %>%
       merge(sim$send_busy[ , -c("receiver_business") ], by=c("sender"), all.x=TRUE, all.y=TRUE) %>% # includes best_action
       .[sim$receive_busy, on=c("sender"="receiver") ] %>%
       .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] 
-
-if (time(sim) == 2) {
-	check_mem_two_progress <<- sim$discourse_memory
-}
-if (time(sim) == 3) {
-	check_mem_three_progress <<- sim$discourse_memory
-}
 
 sim$discourse_memory <- copy(sim$discourse_memory) %>% 
       .[ !is.na(best_action) , msg_compl := mapply(function(a, b, c, k) {
@@ -1355,10 +1330,6 @@ sim$discourse_memory <- copy(sim$discourse_memory) %>%
       .[ , past_self_incohesion := sapply(past_self_incohesion, function(x) list(eval(parse(text = x))))]%>%
       .[ , past_msg_compls := sapply(past_msg_compls, function(x) list(eval(parse(text = x))))] %>%
       .[ , past_op_compls := sapply(past_op_compls, function(x) list(eval(parse(text = x))))]
-if (time(sim) == 2) { check_memory_two <<- sim$discourse_memory }
-if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
-    print("no of rows discmem")
-    print(nrow(sim$discourse_memory))
 
      sim$messages <- copy(sim$messages) %>%
       unique() %>%
@@ -1430,7 +1401,18 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
             variable.name = "actions",
             value.name = "util_score" ) %>%
       .[ , agent_id := as.integer(agent_id) ]
-  if (time(sim) == 2) { check_receive <<- sim$actions_receive } 
+
+	sim$chosen_actions <- copy(sim$actions_receive)[ actions == best_action , .(agent_id, best_action) ] %>%
+	      merge(sim$chosen_actions, by="agent_id", all.x=TRUE , all.y=TRUE) %>% 
+	      .[ best_action.y == "Receive" , action_type := "actions_overall" ] %>%
+	      .[ best_action.y == "Nothing" , action_type := "actions_overall" ] %>%
+	      .[ action_type == "actions_send" , best_action := ifelse(!is.na(best_action.y), best_action.y, "NOT ASSIGNED")] %>%
+	      .[ action_type == "actions_overall" , best_action := ifelse(!is.na(best_action.y), best_action.y, "NOT ASSIGNED")] %>%
+	      .[ action_type == "actions_receive" , best_action := ifelse(!is.na(best_action.x), best_action.x, "NOT ASSIGNED")] %>%
+	      .[ , -c("best_action.x", "best_action.y")]
+
+      print(table(sim$chosen_actions$best_action))
+
     # Heuristic Mode
     
     if (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0) {
@@ -1477,7 +1459,6 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
 	      setkey("agent_id") %>%
 	      unique()
 
-  if (time(sim) == 2) { check_h <<- sim$opinion_updating_h } 
 	    }
        
     # Systematic Mode
@@ -1521,14 +1502,13 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
 	      .[ , .(agent_id, opinion_receiver_new, new_op_compl)] %>%
 	      unique
 
-  if (time(sim) == 2) { check_s <<- sim$opinion_updating_s }
     } 
     
     #################################
     #### UPDATE DISCOURSE_MEMORY ####
     #################################
 
-   if ( (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0 && nrow(sim$actions_receive[ best_action == "Systematic" ] > 0 ) ) )  {
+   if ( (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0 && nrow(sim$actions_receive[ best_action == "Systematic" ]) > 0 ) )  {
 
 	sim$discourse_memory <- copy(sim$s_mode_for_energy)[ , .(agent_id, receiver_business) ] %>%
               setnames("receiver_business", "receiver_business_y") %>%
@@ -1536,9 +1516,9 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
 	      unique() %>%
 	      .[copy(sim$discourse_memory), on=c("agent_id"="sender") ] %>%
 	      setnames("agent_id", "sender") %>%
-	      .[ , receiver_business := ifelse(is.na(receiver_business_y), receiver_business, receiver_business_y ) ]  
+	      .[ , receiver_business := ifelse(is.na(receiver_business_y), receiver_business, receiver_business_y ) ] %>%
+	      .[ , -c("receiver_business_y") ]
 
-  if (time(sim) == 2) { check_update_both <<- sim$discourse_memory }
     sim$opinion_updating <- sim$opinion_updating_s[ , .(agent_id, opinion_receiver_new, new_op_compl) ] %>%
       rbind(sim$opinion_updating_h[ , .(agent_id, opinion_receiver_new, new_op_compl) ] ) %>%
       setkey("agent_id") %>%
@@ -1547,7 +1527,6 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
       } else {
 	   if ( (nrow(sim$actions_receive[ best_action == "Heuristic" ]) > 0 ) ) {
 
-  if (time(sim) == 2) { check_update_h <<- sim$discourse_memory }
     sim$opinion_updating <- sim$opinion_updating_h[ , .(agent_id, opinion_receiver_new, new_op_compl) ] %>%
       setkey("agent_id") %>%
       unique() 
@@ -1560,9 +1539,9 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
 	      unique() %>%
 	      .[copy(sim$discourse_memory), on=c("agent_id"="sender") ] %>%
 	      setnames("agent_id", "sender") %>%
-	      .[ , receiver_business := ifelse(is.na(receiver_business_y), receiver_business, receiver_business_y ) ]  
+	      .[ , receiver_business := ifelse(is.na(receiver_business_y), receiver_business, receiver_business_y ) ] %>%
+	      .[ , -c("receiver_business_y") ]
 
-  if (time(sim) == 2) { check_updating_s <<- sim$discourse_memory }
     sim$opinion_updating <- sim$opinion_updating_s[ , .(agent_id, opinion_receiver_new, new_op_compl) ] %>%
       setkey("agent_id") %>%
       unique() 
@@ -1619,11 +1598,6 @@ if (time(sim) == 3) { check_memory_three <<- sim$discourse_memory }
                                             list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
                                           }, x=past_sender_business, y=sender_business)
       )] 
-
-  if (time(sim) == 2) { check_last <<- sim$discourse_memory }
-    #### sim$discourse_memory table specs at this point:
-    # rowlength: ( sim$environment %>% activate(edges) %>% as_tibble %>% nrow )*2 (in case of undirected)
-    # columns: from (integer), to (integer), receiver_business (numeric), opinion (numeric), message (numeric), past_messages, past_opinions, distance_to_past_opinions, sender_business, past_receiver_business, past_sender_business, nbh_incohesion, past_nbh_incohesion, self_incohesion, past_self_incohesion (all numeric)
 
   } else {
     
