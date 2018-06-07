@@ -32,21 +32,21 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
+modules <- list("basic_setup", "small_world", "rc_sh_model", "data_collection")
 
 times <- list(start = 0, end = 100)
 
 parameters <- list(
   basic_setup = list(
     mu_opinion_distribution = 0,
-    sigma_opinion_distribution = 1.65,
+    sigma_opinion_distribution = 0.3,
     no_agents = 50
     ),
   small_world = list(
     dim = 1,
     nbh_size = 10,
     rewire_p = 0.6,
-    opinion_homophily = 0.1
+    opinion_homophily = 0.3
   ),
   #hegselmann_krause = list(
   #  epsilon = 0.3
@@ -58,31 +58,32 @@ parameters <- list(
   #  opinion_memory_depth = 10,
   #  message_memory_depth = 20
   #)#,
-  rc_energy_model = list(
-    epsilon = 0.3,
-    other_incons_tolerance = 0.1,
-    self_incons_tolerance = 0.1,
-    energy_level = 30,
-    restoration_factor = 30,
-    opinion_memory_depth = 10,
-    message_memory_depth = 20,
-    energy_params_memory_depth = 100,
-    initial_opinion_confidence = 0.01
-    )#,
-  #rc_sh_model = list(
-  #epsilon = 0.3,
-  #other_incons_tolerance = 0.6,
-  #self_incons_tolerance = 0.4,
-  #energy_level = 100,
-  #restoration_factor = 60,
-  #opinion_memory_depth = 10,
-  #message_memory_depth = 20,
-  #energy_params_memory_depth = 100,
-  #no_groups = 4,
-  #expert_percentage = 0.05,
-  #sigma_complexity = 1.75,
-  #argumentation_memory_depth = 10
-  #)
+  #rc_energy_model = list(
+  #  epsilon = 0.3,
+  #  other_incons_tolerance = 0.1,
+  #  self_incons_tolerance = 0.1,
+  #  energy_level = 30,
+  #  restoration_factor = 30,
+  #  opinion_memory_depth = 10,
+  #  message_memory_depth = 20,
+  #  energy_params_memory_depth = 100,
+  #  initial_opinion_confidence = 0.01
+  #  )#,
+  rc_sh_model = list(
+  epsilon = 0.3,
+  other_incons_tolerance = 0.6,
+  self_incons_tolerance = 0.4,
+  energy_level = 100,
+  restoration_factor = 20,
+  opinion_memory_depth = 10,
+  message_memory_depth = 20,
+  energy_params_memory_depth = 100,
+  no_groups = 1,
+  expert_percentage = 0.1,
+  sigma_complexity = 1.75,
+  argumentation_memory_depth = 10,
+  initial_opinion_confidence = 0.01
+  )
 )
 
 paths <- getPaths()
