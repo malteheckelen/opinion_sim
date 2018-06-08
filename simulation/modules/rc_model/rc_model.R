@@ -82,87 +82,76 @@ rc_modelInit <- function(sim) {
 
   )
   
-  sim$chosen_actions <- tibble(
+  sim$chosen_actions <- data.table(
 
     agent_id = rep(agent_characteristics$agent_id, each=1),
     action_type = rep(c("actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
-  ) %>% data.table() %>%
-    .[ , agent_id := as.integer(agent_id) ]
+  )
+  sim$chosen_actions[ , agent_id := as.integer(agent_id) ]
 
 
   sim$messages <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
-    data.table() %>%
-    setnames(old = c("from", "to"), new = c("receiver", "sender"))
+    data.table()
+  setnames(sim$messages, old = c("from", "to"), new = c("receiver", "sender"))
 
-  sim$messages <- sim$environment %>%
+  temp <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
-    data.table() %>%
-    setnames(old = c("from", "to"), new = c("sender", "receiver")) %>%
-    rbind(sim$messages) %>%
-    .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("sender" = "agent_id"), allow.cartesian=TRUE] %>% 
-    setnames("opinion", "opinion_sender")
+    data.table()
+  setnames(temp, old = c("from", "to"), new = c("sender", "receiver"))
+  
+  sim$messages <- rbind(temp, sim$messages)
+  sim$messages <- sim$messages[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("sender" = "agent_id"), allow.cartesian=TRUE]
+  setnames(sim$messages, "opinion", "opinion_sender")
 
   ###################################
   #### PRODUCE POSSIBLE MESSAGES ####
   ###################################
 
-  # in init round this is just a uniformly random chosen number on the interval [0,1]
-  # the vector of random draws functions as egos assumption about alters opinion
   assumption_receiver <<- runif(nrow(sim$messages), 0, 1)
   sim$messages <- cbind(sim$messages, assumption_receiver)
 
-  # make matrix of all possible optimized messages
-  # the outer product of the opinion and assumption vector is constructed by applying the function produce_altered_message
   sim$message_matrix <- outer(sim$messages$opinion_sender, sim$messages$assumption_receiver, produce_altered_message) 
   row.names(sim$message_matrix) <- sim$messages[ , sender]
   colnames(sim$message_matrix) <- sim$messages[ , receiver]
   
-  # the message matrix is melted into a long format
-  # entries where to == from are excluded
-  # this table is then joined with sim$messages
-  # agents send messages optimized for their whole neighborhood: thus opt_message is the mean of all optimized messages per agent
-  # if this optimized message exceeds epsilon, the maximum possible deviation of opinion_from is used 
-  sim$messages <- copy(sim$message_matrix) %>%
-    data.table() %>%
-    .[ , sender := as.numeric(row.names(sim$message_matrix))] %>%
-    melt( id.vars = c("sender"),
-          measure.vars = as.character(seq(1, sim$no_agents, 1)),
-          variable.name = "receiver",
-          value.name = "opt_message" ) %>%
-    .[ receiver != sender ] %>%
-    setkey("sender") %>%
-    unique() %>%
-    .[ , sender := as.integer(sender)] %>%
-    .[ , receiver := as.integer(receiver)] %>%
-    .[copy(unique(sim$messages)), on=c("sender", "receiver"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := median(opt_message), by = .(sender)] 
+  sim$messages <- data.table(copy(sim$message_matrix)
+  sim$messages[ , sender := as.numeric(row.names(sim$message_matrix))]
+
+  sim$messages_melt_temp <-  melt( sim$messages,
+		id.vars = c("sender"),
+		measure.vars = as.character(seq(1, sim$no_agents, 1)),
+		variable.name = "receiver",
+		value.name = "opt_message" )
+  sim$messages_melt_temp <- sim$messages_melt_temp[ receiver != sender ]
+  setkey(sim$messages_melt_temp, "sender")
+  sim$messages_melt_temp <- unique(sim$messages_melt_temp)
+  sim$messages_melt_temp[ , sender := as.integer(sender) ]
+  sim$messages_melt_temp[ , receiver := as.integer(receiver)] 
+
+  sim$messages <- sim$messages_melt_temp[copy(unique(sim$messages)), on=c("sender", "receiver"), nomatch = 0L, allow.cartesian = TRUE] 
+  sim$messages[ , opt_message := median(opt_message), by = .(sender)] 
   
-  #### sim$messages table specs at this point:
-  # rowlength: ( sim$environment %>% as_tibble() %>% nrow() )*2
-  # columns: from (int), to (int), opinion_from (int), opt_message (int)
-
-  sim$discourse_memory <- copy(sim$messages) %>%
-    .[ , past_opinions := sapply(opinion_sender, function(x) {list(x)} )] %>%
-    setnames("opinion_sender", "opinion") %>%
-    .[ , .(sender, opinion, past_opinions)] %>%
-    .[ , past_opinions := as.character(past_opinions) ] %>% # unique() can't handle list columns, so first transform to character
-    unique() %>%
-    .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% # then transform back
-    .[ , sender_business := 0 ] %>%
-    .[ , receiver_business := 0 ]
-
-
+  sim$discourse_memory <- copy(sim$messages)
+  sim$discourse_memory[ , past_opinions := sapply(opinion_sender, function(x) {list(x)} )]
+  setnames(sim$discourse_memory, "opinion_sender", "opinion")
+  sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, past_opinions)]
+  sim$discourse_memory[ , past_opinions := as.character(past_opinions) ]
+  sim$discourse_memory <- unique(sim$discourse_memory)
+  sim$discourse_memory[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] 
+  sim$discourse_memory[ , sender_business := 0 ]
+  sim$discourse_memory[ , receiver_business := 0 ]
 
   # Sending
-  sim$actions_send <- copy(sim$messages) %>%
-    .[copy(sim$actions_send), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+
+  sim$actions_send <- copy(sim$messages)
+  sim$actions_send <- sim$actions_send[copy(sim$actions_send), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE]
+  sim$actions_send <- sim$actions_send[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE]
+  sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
       switch(k,
              "Unoptimized" = {
                mean(
@@ -179,8 +168,8 @@ rc_modelInit <- function(sim) {
                )
              }
       )
-    }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)] %>%
-      .[, distance_message_opinion := mapply(function(a,b,k) {
+    }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)]
+ sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
                  abs(a - a)
@@ -189,8 +178,8 @@ rc_modelInit <- function(sim) {
                  abs(a - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, k=actions)] %>%
-      .[, distance_message_assumption := mapply(function(a,b,c,k) {
+      }, a=opinion_sender, b=opt_message, k=actions)]
+ sim$actions_send[, distance_message_assumption := mapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
                  abs(c - a)
@@ -199,99 +188,106 @@ rc_modelInit <- function(sim) {
                  abs(c - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)] %>%
-      .[ , -c("past_opinions", "receiver")] %>% # include past_messages here in the step function
-      .[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
-      setnames("sender", "agent_id") %>%
-      .[,.(agent_id, actions, util_score)] %>%
-      setkey("agent_id") %>%
-      unique() %>%
-      .[, util_score := sum(util_score), by=c("agent_id", "actions")] %>%
-      unique() %>%
-      dcast(agent_id ~ actions, value.var = "util_score") %>%
-      .[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")] %>%
-      melt( id.vars = c("agent_id", "best_action"),
-            measure.vars = c("Optimized", "Unoptimized"),
-            variable.name = "actions",
-            value.name = "util_score" ) %>%
-      .[ , agent_id := as.integer(agent_id)]
- 
-  sim$chosen_actions <- copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ] %>%
-    merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE, all.y=TRUE) %>%
-    .[ , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] %>% 
-    .[ , -c("best_action.x", "best_action.y")]
+      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)]
+ sim$actions_send[ , past_opinions := NULL][ , receiver := NULL ]
+ sim$actions_send[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption]
+ setnames(sim$actions_send, "sender", "agent_id")
+ sim$actions_send <- sim$actions_send[,.(agent_id, actions, util_score)]
+ setkey(sim$actions_send, "agent_id")
+ sim$actions_send <- unique(sim$actions_send)
+ sim$actions_send[, util_score := sum(util_score), by=c("agent_id", "actions")]
+ sim$actions_send <- unique(sim$actions_send)
 
-  sim$discourse_memory <- copy(sim$actions_send) %>%
-    .[copy(sim$messages), on = c("agent_id" = "sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    setnames("agent_id", "sender") %>%
-    setkey("sender") %>%
-    unique() %>%
-    .[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[actions==best_action] %>%
-    .[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
+ sim$actions_send_cast <- dcast(sim$actions_send, agent_id ~ actions, value.var = "util_score")
+ sim$actions_send_cast[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")]
+
+ sim$actions_send <- melt( sim$actions_send_cast,
+	 id.vars = c("agent_id", "best_action"),
+         measure.vars = c("Optimized", "Unoptimized"),
+         variable.name = "actions",
+         value.name = "util_score" )
+ sim$actions_send[ , agent_id := as.integer(agent_id)]
+ 
+ sim$chosen_actions <- merge(copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ], sim$chosen_actions, by=c("agent_id"), all.x=TRUE, all.y=TRUE)
+ sim$chosen_actions[ , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] 
+ sim$chosen_actions[ , best_action.x := NULL ][ , best_action.y := NULL ]
+
+ sim$discourse_memory <- copy(sim$actions_send)[copy(sim$messages), on = c("agent_id" = "sender"), nomatch = 0L, allow.cartesian = TRUE]
+ setnames(sim$discourse_memory, "agent_id", "sender")
+ setkey(sim$discourse_memory, "sender")
+ sim$discourse_memory <- unique(sim$discourse_memory)
+ sim$discourse_memory <- sim$discourse_memory[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE]
+ sim$discourse_memory <- sim$discourse_memory[actions==best_action]
+ sim$discourse_memory[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
                                  list(opinion_sender[[1]]),
-                                 list(opt_message[[1]]))] %>%
-    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
+                                 list(opt_message[[1]]))]
+ sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
                                  mapply(function(x, y) {
                                    list(c(unlist(x), y))
                                  }, x=past_opinions, y=opinion_sender),
                                  mapply(function(x, y) {
                                    list(c(unlist(x)[1:params(sim)$rc_model$opinion_memory_depth], y))
                                  }, x=past_opinions, y=opinion_sender)
-    )
-    ] %>%
-    setnames("opinion_sender", "opinion") %>%
-    .[ , message := past_messages[[1]] ] %>%
-    .[ , .(sender, past_messages, message, opinion, past_opinions)] %>%
-    .[ , past_messages := as.character(past_messages) ] %>%
-    .[ , past_opinions := as.character(past_opinions) ] %>%
-    unique() %>%
-    .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>%
-    .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+    ) ]
+ setnames(sim$discourse_memory, "opinion_sender", "opinion")
+ sim$discourse_memory[ , message := past_messages[[1]] ]
+ sim$discourse_memory <- sim$discourse_memory[ , .(sender, past_messages, message, opinion, past_opinions)] 
+ sim$discourse_memory[ , past_messages := as.character(past_messages) ]
+ sim$discourse_memory[ , past_opinions := as.character(past_opinions) ] 
+ sim$discourse_memory <- unique(sim$discourse_memory)
+ sim$discourse_memory[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))]
+ sim$discourse_memory[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
 
 
-  sim$messages <- copy(sim$messages) %>%
-      unique() %>%
-      setnames(old = c("sender", "receiver"), new = c("receiver", "sender")) %>%
-      .[ , .(receiver, opinion_sender, opt_message)] %>%
-      .[ , opinion_receiver := opinion_sender] %>%
-      .[ , -c("opinion_sender") ] %>%
-      .[sim$messages[ , -c("opt_message") ], on="receiver", nomatch=0L, allow.cartesian=TRUE] # WORKS
+ sim$messages_reverse <- unique(copy(sim$messages))
+ setnames(sim$messages_reverse, old = c("sender", "receiver"), new = c("receiver", "sender"))
+ sim$messages_reverse <- sim$messages_reverse[ , .(receiver, opinion_sender, opt_message)]
+ sim$messages_reverse[ , opinion_receiver := opinion_sender]
+ sim$messages_reverse[ , opinion_sender := NULL ][ , opt_message := NULL ]
+ sim$messages[sim$messages_reverse, on="receiver", nomatch=0L, allow.cartesian=TRUE] 
 
-    sim$messages <- copy(sim$messages) %>%
-      .[sim$actions_send[ , .(agent_id, actions, best_action)], nomatch=0L, on=c("sender" = "agent_id"), allow.cartesian=TRUE] %>%
-      .[ , assumption_sender := ifelse(.[, best_action] == "Unoptimized", opinion_sender, opt_message)] %>%
-      .[ , -c("actions", "best_action")] %>%
-      setkey("sender") %>%
-      unique()
+ sim$messages[sim$actions_send[ , .(agent_id, actions, best_action)], nomatch=0L, on=c("sender" = "agent_id"), allow.cartesian=TRUE]
+ sim$messages[ , assumption_sender := ifelse(.[, best_action] == "Unoptimized", opinion_sender, opt_message)] 
+ sim$messages[ , actions := NULL ][ , best_action := NULL ]
+ setkey(sim$messages, "sender") 
+ unique(sim$messages)
 
   # Receiving
 
-  sim$opinion_updating <- copy(sim$messages) %>%
-      .[copy(sim$discourse_memory)[ , .(sender, past_opinions)] %>% .[ , past_opinions := as.character(past_opinions) ] %>% unique %>% .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))], on=c("receiver"="sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , distance_to_past_opinions := mapply(function(a,b) {
+ merge_receiver_opinions <- copy(sim$discourse_memory)[ , .(sender, past_opinions)]
+ merge_receiver_opinions[ , past_opinions := as.character(past_opinions) ]
+ merge_receiver_opinions <- unique(merge_receiver_opinions)
+ merge_receiver_opinions[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+
+ merge_sender_messages <- copy(sim$discourse_memory)[ , .(sender, past_messages)]
+ merge_sender_messages[ , past_opinions := as.character(past_opinions) ]
+ merge_sender_messages <- unique(merge_receiver_opinions)
+ merge_sender_messages[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+
+ sim$opinion_updating <- copy(sim$messages)[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L, allow.cartesian = TRUE] 
+ sim$opinion_updating[ , distance_to_past_opinions := mapply(function(a,b) {
       mean(
         sapply(a, function(x) {
           abs(x - b)
         })
       )
-    }, a=past_opinions, b=assumption_sender)] %>%
-    .[ , -c("past_opinions") ] %>%
-    unique() %>%
-    .[ , within_epsilon := abs(opinion_sender - assumption_sender) < params(sim)$rc_model$epsilon] %>%
-    .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] %>%  #.[ , self_inconsistent] ->> self_inconsistent
-    .[ within_epsilon == TRUE & self_consistent == TRUE ] %>%
-    .[ , sum_assumptions := sum(assumption_sender), by=receiver] %>%
-    .[ , denominator := .N, by=receiver ] %>%
-    .[ , opinion_receiver_new := ifelse( denominator != 0, sum_assumptions / denominator, opinion_receiver )] %>%
-    setnames("receiver", "agent_id") %>%
-    .[ , .(agent_id, opinion_receiver_new)] %>%
-    setkey("agent_id") %>%
-    unique()
+    }, a=past_opinions, b=assumption_sender)] 
+ sim$opinion_updating[ , past_opinions := NULL ] 
+ sim$opinion_updating <- unique(sim$opinion_updating)
+ sim$opinion_updating[ , within_epsilon := abs(opinion_sender - assumption_sender) < params(sim)$rc_model$epsilon] 
+ sim$opinion_updating[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] 
+ sim$opinion_updating <- sim$opinion_updating[ within_epsilon == TRUE & self_consistent == TRUE ] 
+ sim$opinion_updating[ , sum_assumptions := sum(assumption_sender), by=receiver] 
+ sim$opinion_updating[ , denominator := .N, by=receiver ] 
+ sim$opinion_updating[ , opinion_receiver_new := ifelse( denominator != 0, sum_assumptions / denominator, opinion_receiver )]
+ setnames(sim$opinion_updating, "receiver", "agent_id")
+ sim$opinion_updating <- sim$opinion_updating[ , .(agent_id, opinion_receiver_new)]
+ setkey(sim$opinion_updating, "agent_id")
+ sim$opinion_updating <- unique(sim$opinion_updating)
 
-  sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
-    .[ , opinion := ifelse(is.na(opinion_receiver_new), opinion, opinion_receiver_new)] %>%
-    .[ , -c("opinion_receiver_new")] 
+ sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE)
+ sim$agent_characteristics[ , opinion := ifelse(is.na(opinion_receiver_new), opinion, opinion_receiver_new)] 
+ sim$agent_characteristics[ , opinion_receiver_new := NULL ] 
 
   return(invisible(sim))
 
@@ -300,63 +296,82 @@ rc_modelInit <- function(sim) {
 rc_modelStep <- function(sim) {
   print(time(sim))
 
-  sim$chosen_actions <- tibble(
+  sim$actions_send <- data.table(
+
+    agent_id = rep(agent_characteristics$agent_id, each=2),
+    actions = rep(c("Unoptimized", "Optimized"), no_agents),
+    util_score = rep(0, length(actions))
+
+  )
+  
+  sim$chosen_actions <- data.table(
 
     agent_id = rep(agent_characteristics$agent_id, each=1),
     action_type = rep(c("actions_send"), sim$no_agents),
     best_action = rep(c("Not assigned"), length(action_type))
 
-  ) %>% data.table() %>%
-    .[ , agent_id := as.integer(agent_id) ]
+  )
+  sim$chosen_actions[ , agent_id := as.integer(agent_id) ]
 
-
-  sim$messages <- sim$environment %>%
+  sim$messages <- copy(sim$environment) %>%
     activate(edges) %>%
     as_tibble() %>%
-    data.table() %>%
-    setnames(old = c("from", "to"), new = c("receiver", "sender"))
+    data.table()
+  setnames(sim$messages, old = c("from", "to"), new = c("receiver", "sender"))
 
-  sim$messages <- sim$environment %>%
+  temp <- sim$environment %>%
     activate(edges) %>%
     as_tibble() %>%
-    data.table() %>%
-    setnames(old = c("from", "to"), new = c("sender", "receiver")) %>%
-    rbind(sim$messages) %>%
-    .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("sender" = "agent_id"), allow.cartesian=TRUE] %>%
-    setnames("opinion", "opinion_sender")
+    data.table()
+  setnames(temp, old = c("from", "to"), new = c("sender", "receiver"))
+  
+  sim$messages <- rbind(temp, sim$messages)
+  sim$messages[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("sender" = "agent_id"), allow.cartesian=TRUE]
+  setnames(sim$messages, "opinion", "opinion_sender")
 
-  sim$messages <-  sim$discourse_memory[ , .(sender, message) ] %>%
-    unique() %>%
-    setnames("sender", "receiver") %>%
-    merge(sim$messages, by = c("receiver") ) %>%
-    setnames("message", "assumption_receiver") 
+  temp_discmem_messages <-  unique(sim$discourse_memory[ , .(sender, message) ])
+  setnames(temp_discmem_messages, "sender", "receiver") 
+  sim$messages <- merge(temp_discmem_messages, sim$messages, by = c("receiver") ) 
+  setnames("message", "assumption_receiver") 
 
   # make matrix of all possible optimized messages
   sim$message_matrix <- outer(sim$messages$opinion_sender, sim$messages$assumption_receiver, produce_altered_message) # works
   row.names(sim$message_matrix) <- sim$messages[, sender]
   colnames(sim$message_matrix) <- sim$messages[, receiver]
+  
+  sim$messages <- data.table(copy(sim$message_matrix)
+  sim$messages[ , sender := as.numeric(row.names(sim$message_matrix))]
 
-  sim$messages <- copy(sim$message_matrix) %>%
-    data.table() %>%
-    .[ , sender := as.numeric(row.names(message_matrix))] %>%
-    melt( id.vars = c("sender"),
-          measure.vars = as.character(seq(1, no_agents, 1)),
-          variable.name = "receiver",
-          value.name = "opt_message" ) %>%
-    .[ receiver != sender] %>%
-    setkey("sender") %>%
-    unique() %>%
-    .[ , sender := as.integer(sender)] %>%
-    .[ , receiver := as.integer(receiver)] %>%
-    .[copy(unique(sim$messages)), on=c("sender", "receiver"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , opt_message := mean(opt_message), by = .(sender)]
+  sim$messages_melt_temp <-  melt( sim$messages,
+		id.vars = c("sender"),
+		measure.vars = as.character(seq(1, sim$no_agents, 1)),
+		variable.name = "receiver",
+		value.name = "opt_message" )
+  sim$messages_melt_temp <- sim$messages_melt_temp[ receiver != sender ]
+  setkey(sim$messages_melt_temp, "sender")
+  sim$messages_melt_temp <- unique(sim$messages_melt_temp)
+  sim$messages_melt_temp[ , sender := as.integer(sender) ]
+  sim$messages_melt_temp[ , receiver := as.integer(receiver)] 
+
+  sim$messages <- sim$messages_melt_temp[copy(unique(sim$messages)), on=c("sender", "receiver"), nomatch = 0L, allow.cartesian = TRUE] 
+  sim$messages[ , opt_message := median(opt_message), by = .(sender)] 
+  
+  sim$discourse_memory <- copy(sim$messages)
+  sim$discourse_memory[ , past_opinions := sapply(opinion_sender, function(x) {list(x)} )]
+  setnames(sim$discourse_memory, "opinion_sender", "opinion")
+  sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, past_opinions)]
+  sim$discourse_memory[ , past_opinions := as.character(past_opinions) ]
+  sim$discourse_memory <- unique(sim$discourse_memory)
+  sim$discourse_memory[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] 
+  sim$discourse_memory[ , sender_business := 0 ]
+  sim$discourse_memory[ , receiver_business := 0 ]
 
   # Sending
-
-  sim$actions_send <- copy(sim$messages) %>%
-    .[copy(sim$actions_send), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[, distance_to_past_messages := mapply(function(a,b,c,k) {
+  
+  sim$actions_send <- copy(sim$messages)
+  sim$actions_send <- sim$actions_send[copy(sim$actions_send), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE]
+  sim$actions_send <- sim$actions_send[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE]
+  sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
       switch(k,
              "Unoptimized" = {
                mean(
@@ -373,26 +388,8 @@ rc_modelStep <- function(sim) {
                )
              }
       )
-    }, a=past_messages, b=opt_message, c=opinion_sender, k=actions)] %>%
-    .[, distance_to_past_opinions := mapply(function(a,b,c,k) {
-      switch(k,
-             "Unoptimized" = {
-               max(
-                 sapply(a, function(x) {
-                   abs(x - c)
-                 })
-               )
-             },
-             "Optimized" = {
-               max(
-                 sapply(a, function(x) {
-                   abs(x - b)
-                 })
-               )
-             }
-      )
-    }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)] %>%
-      .[, distance_message_opinion := mapply(function(a,b,k) {
+    }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)]
+ sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
                  abs(a - a)
@@ -401,8 +398,8 @@ rc_modelStep <- function(sim) {
                  abs(a - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, k=actions)] %>%
-      .[, distance_message_assumption := mapply(function(a,b,c,k) {
+      }, a=opinion_sender, b=opt_message, k=actions)]
+ sim$actions_send[, distance_message_assumption := mapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
                  abs(c - a)
@@ -411,35 +408,37 @@ rc_modelStep <- function(sim) {
                  abs(c - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)] %>%
-      .[ , -c("past_opinions", "past_messages", "receiver")] %>% # include past_messages here in the step function
-      .[ , util_score := 0 - distance_to_past_opinions - distance_to_past_messages - distance_message_opinion - distance_message_assumption] %>% # include distance_to_past_messages in step function
-      setnames("sender", "agent_id") %>%
-      .[,.(agent_id, actions, util_score)] %>%
-      setkey("agent_id") %>%
-      unique() %>%
-      .[, util_score := sum(util_score), by=c("agent_id", "actions")] %>%
-      unique() %>%
-      dcast(agent_id ~ actions, value.var = "util_score") %>%
-      .[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")] %>%
-      melt( id.vars = c("agent_id", "best_action"),
-            measure.vars = c("Optimized", "Unoptimized"),
-            variable.name = "actions",
-            value.name = "util_score" )
- 
-  sim$chosen_actions <- copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ] %>%
-    merge(sim$chosen_actions, by=c("agent_id"), all.x=TRUE, all.y=TRUE) %>%
-    .[ , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] %>% 
-    .[ , -c("best_action.x", "best_action.y")]
+      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)]
+ sim$actions_send[ , past_opinions := NULL][ , receiver := NULL ]
+ sim$actions_send[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption]
+ setnames(sim$actions_send, "sender", "agent_id")
+ sim$actions_send <- sim$actions_send[,.(agent_id, actions, util_score)]
+ setkey(sim$actions_send, "agent_id")
+ sim$actions_send <- unique(sim$actions_send)
+ sim$actions_send[, util_score := sum(util_score), by=c("agent_id", "actions")]
+ sim$actions_send <- unique(sim$actions_send)
 
-  sim$discourse_memory <- copy(sim$actions_send) %>%
-    .[copy(sim$messages), on = c("agent_id" = "sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    setnames("agent_id", "sender") %>%
-    setkey("sender") %>%
-    unique() %>%
-    .[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[actions==best_action] %>%
-    .[ , past_messages := ifelse(lengths(past_messages) < params(sim)$rc_model$message_memory_depth,
+ sim$actions_send_cast <- dcast(sim$actions_send, agent_id ~ actions, value.var = "util_score")
+ sim$actions_send_cast[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")]
+
+ sim$actions_send <- melt( sim$actions_send_cast,
+	 id.vars = c("agent_id", "best_action"),
+         measure.vars = c("Optimized", "Unoptimized"),
+         variable.name = "actions",
+         value.name = "util_score" )
+ sim$actions_send[ , agent_id := as.integer(agent_id) ]
+ 
+ sim$chosen_actions <- merge(copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ], sim$chosen_actions, by=c("agent_id"), all.x=TRUE, all.y=TRUE)
+ sim$chosen_actions[ , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] 
+ sim$chosen_actions[ , best_action.x := NULL ][ , best_action.y := NULL ]
+
+ sim$discourse_memory <- copy(sim$actions_send)[copy(sim$messages), on = c("agent_id" = "sender"), nomatch = 0L, allow.cartesian = TRUE]
+ setnames(sim$discourse_memory, "agent_id", "sender")
+ setkey(sim$discourse_memory, "sender")
+ sim$discourse_memory <- unique(sim$discourse_memory)
+ sim$discourse_memory <- sim$discourse_memory[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE]
+ sim$discourse_memory <- sim$discourse_memory[actions==best_action]
+ sim$discourse_memory[ , past_messages := ifelse(lengths(past_messages) < params(sim)$rc_model$message_memory_depth,
                                  ifelse(.[ , best_action] == "Unoptimized",
                                         mapply(function(x, y) {
                                           list(c(unlist(x), y))
@@ -455,78 +454,85 @@ rc_modelStep <- function(sim) {
                                           list(c(unlist(x)[1:params(sim)$rc_model$message_memory_depth], y))
                                         }, x=past_messages, y=opt_message)
                                  )
-    )] %>%
-    .[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
+    )] 
+ sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_model$opinion_memory_depth,
                                  mapply(function(x, y) {
                                    list(c(unlist(x), y))
                                  }, x=past_opinions, y=opinion_sender),
                                  mapply(function(x, y) {
                                    list(c(unlist(x)[1:2], y))
                                  }, x=past_opinions, y=opinion_sender)
-    )
-    ] %>%
-    setnames("opinion_sender", "opinion") %>%
-    setnames("opt_message", "message") %>%
-    .[ , .(sender, message, past_messages, opinion, past_opinions)] %>%
-    .[ , past_messages := as.character(past_messages) ] %>%
-    .[ , past_opinions := as.character(past_opinions) ] %>%
-    unique() %>%
-    .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))] %>%
-    .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+    ) ]
+ setnames(sim$discourse_memory, "opinion_sender", "opinion")
+ sim$discourse_memory[ , message := past_messages[[1]] ]
+ sim$discourse_memory <- sim$discourse_memory[ , .(sender, past_messages, message, opinion, past_opinions)] 
+ sim$discourse_memory[ , past_messages := as.character(past_messages) ]
+ sim$discourse_memory[ , past_opinions := as.character(past_opinions) ] 
+ sim$discourse_memory <- unique(sim$discourse_memory)
+ sim$discourse_memory[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))]
+ sim$discourse_memory[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
 
-  sim$messages <- copy(sim$messages) %>%
-      unique() %>%
-      setnames(old = c("sender", "receiver"), new = c("receiver", "sender")) %>%
-      .[ , .(receiver, opinion_sender, opt_message)] %>%
-      .[ , opinion_receiver := opinion_sender] %>%
-      .[ , -c("opinion_sender") ] %>%
-      .[sim$messages[ , -c("opt_message") ], on="receiver", nomatch=0L, allow.cartesian=TRUE] # WORKS
+ sim$messages_reverse <- unique(copy(sim$messages))
+ setnames(sim$messages_reverse, old = c("sender", "receiver"), new = c("receiver", "sender"))
+ sim$messages_reverse <- sim$messages_reverse[ , .(receiver, opinion_sender, opt_message)]
+ sim$messages_reverse[ , opinion_receiver := opinion_sender]
+ sim$messages_reverse[ , opinion_sender := NULL ][ , opt_message := NULL ]
+ sim$messages[sim$messages_reverse, on="receiver", nomatch=0L, allow.cartesian=TRUE] 
 
-    sim$messages <- copy(sim$messages) %>%
-      .[sim$actions_send[ , .(agent_id, actions, best_action)], nomatch=0L, on=c("sender" = "agent_id"), allow.cartesian=TRUE] %>%
-      .[ , assumption_sender := ifelse(.[, best_action] == "Unoptimized", opinion_sender, opt_message)] %>%
-      .[ , -c("actions", "best_action")] %>%
-      setkey("sender") %>%
-      unique()
+ sim$messages[sim$actions_send[ , .(agent_id, actions, best_action)], nomatch=0L, on=c("sender" = "agent_id"), allow.cartesian=TRUE]
+ sim$messages[ , assumption_sender := ifelse(.[, best_action] == "Unoptimized", opinion_sender, opt_message)] 
+ sim$messages[ , actions := NULL ][ , best_action := NULL ]
+ setkey(sim$messages, "sender") 
+ unique(sim$messages)
 
-  # Receiving
+ # Receiving
 
-  sim$opinion_updating <- copy(sim$messages) %>%
-     .[copy(sim$discourse_memory)[ , .(sender, past_opinions)] %>% .[ , past_opinions := as.character(past_opinions) ] %>% unique %>% .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))], on=c("receiver"="sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-     .[copy(sim$discourse_memory)[ , .(sender, past_messages)] %>% .[ , past_messages := as.character(past_messages) ] %>% unique %>% .[ , past_messages := sapply(past_messages, function(x) list(eval(parse(text = x))))], on=c("sender"), nomatch = 0L, allow.cartesian = TRUE] %>%
-    .[ , distance_to_past_messages := mapply(function(a,b) {
+ merge_receiver_opinions <- copy(sim$discourse_memory)[ , .(sender, past_opinions)]
+ merge_receiver_opinions[ , past_opinions := as.character(past_opinions) ]
+ merge_receiver_opinions <- unique(merge_receiver_opinions)
+ merge_receiver_opinions[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+
+ merge_sender_messages <- copy(sim$discourse_memory)[ , .(sender, past_messages)]
+ merge_sender_messages[ , past_opinions := as.character(past_opinions) ]
+ merge_sender_messages <- unique(merge_receiver_opinions)
+ merge_sender_messages[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))]
+
+ sim$opinion_updating <- copy(sim$messages)[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L, allow.cartesian = TRUE] 
+ sim$opinion_updating <- sim$opinion_updating[merge_sender_messages, on=c("receiver"="sender"), nomatch = 0L, allow.cartesian = TRUE] 
+ sim$opinion_updating[ , distance_to_past_opinions := mapply(function(a,b) {
+      mean(
+        sapply(a, function(x) {
+          abs(x - b)
+        })
+      )
+    }, a=past_opinions, b=assumption_sender)] 
+ sim$opinion_updating[ , distance_to_past_messages := mapply(function(a,b) {
       max(
         sapply(a, function(x) {
           abs(x - b)
         })
       )
     }, a=past_messages, b=assumption_sender)] %>% 
-    .[ , distance_to_past_opinions := mapply(function(a,b) {
-      max(
-        sapply(a, function(x) {
-          abs(x - b)
-        })
-      )
-    }, a=past_opinions, b=assumption_sender)] %>% 
-    .[ , -c("past_opinions", "past_messages") ] %>%
-    unique() %>%
-    .[ , within_epsilon := abs(opinion_receiver - assumption_sender) < params(sim)$rc_model$epsilon] %>%
-    .[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] %>%  
-    .[ , trust := distance_to_past_messages < params(sim)$rc_model$other_incons_tolerance] %>% 
-    .[ within_epsilon == TRUE & trust == TRUE & self_consistent == TRUE ] %>%
-    .[ , sum_assumptions := sum(assumption_sender), by=receiver] %>%
-    .[ , denominator := .N, by=receiver ] %>%
-    .[ , opinion_receiver_new := ifelse( denominator != 0, sum_assumptions / denominator, opinion_receiver )] %>%
-    setnames("receiver", "agent_id") %>%
-    .[ , .(agent_id, opinion_receiver_new)] %>%
-    setkey("agent_id") %>%
-    unique()
+ sim$opinion_updating[ , past_opinions := NULL ] 
+ sim$opinion_updating[ , past_messages := NULL ] 
+ sim$opinion_updating <- unique(sim$opinion_updating)
+ sim$opinion_updating[ , within_epsilon := abs(opinion_sender - assumption_sender) < params(sim)$rc_model$epsilon] 
+ sim$opinion_updating[ , self_consistent := distance_to_past_opinions < params(sim)$rc_model$self_incons_tolerance] 
+ sim$opinion_updating[ , trust := distance_to_past_messages < params(sim)$rc_model$other_incons_tolerance ] 
+ sim$opinion_updating <- sim$opinion_updating[ within_epsilon == TRUE & self_consistent == TRUE & trust == TRUE ] 
+ sim$opinion_updating[ , sum_assumptions := sum(assumption_sender), by=receiver] 
+ sim$opinion_updating[ , denominator := .N, by=receiver ] 
+ sim$opinion_updating[ , opinion_receiver_new := ifelse( denominator != 0, sum_assumptions / denominator, opinion_receiver )]
+ setnames(sim$opinion_updating, "receiver", "agent_id")
+ sim$opinion_updating <- sim$opinion_updating[ , .(agent_id, opinion_receiver_new)]
+ setkey(sim$opinion_updating, "agent_id")
+ sim$opinion_updating <- unique(sim$opinion_updating)
 
-  sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) %>%
-    .[ , opinion := ifelse(is.na(opinion_receiver_new), opinion, opinion_receiver_new)] %>%
-    .[ , -c("opinion_receiver_new")] 
+ sim$agent_characteristics <- merge(sim$agent_characteristics, sim$opinion_updating, by="agent_id", all.x = TRUE) 
+ sim$agent_characteristics[ , opinion := ifelse(is.na(opinion_receiver_new), opinion, opinion_receiver_new)] 
+ sim$agent_characteristics[ , opinion_receiver_new := NULL ] 
 
-  return(invisible(sim))
+ return(invisible(sim))
 
 }
 
