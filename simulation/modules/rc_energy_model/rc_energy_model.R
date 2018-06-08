@@ -302,9 +302,6 @@ rc_energy_modelInit <- function(sim) {
       merge(sim$discourse_memory[ , -c("sender_business", "receiver_business", "assumption_receiver")], by=c("sender"), all.x=TRUE)%>%
       .[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] %>% 
       .[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] %>%
-      .[ , past_messages := ifelse(.[ , best_action] == "Unoptimized",
-                                   opinion_sender %>% list(),
-                                   opt_message %>% list())] %>%
       .[ , past_messages := mapply(function(x,y,z) {
 
 	      ifelse(x == "Unoptimized",
@@ -363,7 +360,7 @@ rc_energy_modelInit <- function(sim) {
     sim$messages <- copy(sim$messages) %>%
       unique() %>%
       setnames(old = c("sender", "receiver"), new = c("receiver", "sender")) %>%
-      .[ , .(receiver, opinion_sender, opt_message)] %>%
+      .[ , .(receiver, opinion_sender, opt_message)] %>% # opt_message: should that be here?
       .[ , opinion_receiver := opinion_sender] %>%
       .[ , -c("opinion_sender") ] %>%
       .[sim$messages[ , -c("opt_message") ], on="receiver", nomatch=0L, allow.cartesian=TRUE] 
@@ -518,7 +515,7 @@ rc_energy_modelStep <- function(sim) {
     as_tibble() %>%
     data.table() %>%
     setnames(old = c("from", "to"), new = c("sender", "receiver")) %>%
-    rbind(messages) %>%
+    rbind(sim$messages) %>%
     .[copy(sim$agent_characteristics)[, .(agent_id, opinion)], nomatch = 0L, on = c("sender" = "agent_id"), allow.cartesian=TRUE] %>%
     setnames("opinion", "opinion_sender")
 
@@ -577,20 +574,6 @@ rc_energy_modelStep <- function(sim) {
     .[ , .(distance_to_past_opinions, sender, past_self_incohesion, past_nbh_incohesion, sender_business, receiver_business, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion, max_send_energy_loss, max_receive_energy_loss)] %>%
     .[ , control := sum(distance_to_past_opinions) , by=sender ] %>%
     .[(sim$agent_characteristics[ , .(agent_id, energy)] %>% unique()), on=c("sender" = "agent_id") ] %>%
-    .[ , psi_mean_index := mapply(function(x) {
-
-      is_na <- sum(unlist(x)) / length(unlist(x))
-
-      ifelse(is.na(is_na), 0, is_na)
-
-    }, x=past_self_incohesion )] %>%
-    .[ , pni_mean_index := mapply(function(x) {
- 
-      is_na <- sum(unlist(x)) / length(unlist(x))
-      
-      ifelse(is.na(is_na), 0, is_na)
-
-    }, x=past_nbh_incohesion )] %>%
     .[ , rec_business_mean_index := mapply(function(x, y) {
 
       is_na <- sum(unlist(x)) / (y*length(unlist(x)))
@@ -625,7 +608,17 @@ rc_energy_modelStep <- function(sim) {
     }, x=past_sender_business )] %>%
     .[ , both_business_mean := mapply(function(x, y) {
 
-      sum( mean(unlist(x)), mean(unlist(y)))
+      series_one <- rev(unlist(x))
+      for (i in 1:length(x)) {
+	      series_one[i] <- series_one[i] / i
+      }
+
+      series_two <- rev(unlist(y))
+      for (i in 1:length(y)) {
+	      series_two[i] <- series_two[i] / i
+      }
+	    
+      sum( mean(series_one),  mean(series_two))
 
     }, x=past_sender_business, y=past_receiver_business )] %>%
     .[ , both_business_mean_index := mapply(function(x, y, z, a) {
@@ -835,7 +828,7 @@ rc_energy_modelStep <- function(sim) {
       .[ , -c("best_action.x", "best_action.y")]
 
     print(table(sim$chosen_actions$best_action))
-yo <<- sim$discourse_memory
+
     #####################################
     #### UPDATE sim$discourse_memory ####
     #####################################
@@ -886,14 +879,12 @@ print(nrow(sim$discourse_memory))
       .[ , past_opinions := sapply(past_opinions, function(x) list(eval(parse(text = x))))] %>% 
       .[ , past_receiver_business := sapply(past_receiver_business, function(x) list(eval(parse(text = x))))] %>% 
       .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] 
-print(nrow(sim$discourse_memory))
-yo_two <<- sim$discourse_memory
+
     temp <- copy(sim$discourse_memory)[ , .(receiver, receiver_business)] %>% 
 	    .[ !is.na(receiver) ] %>%
 	    .[ , receiver_business := max(receiver_business), by=receiver] %>%
 	    unique() 
-print(nrow(temp))
-   tempi <<- temp 
+   
     sim$discourse_memory <-  copy( sim$discourse_memory)[ , -c("receiver_business")]  %>%
       merge(temp, by.x = c("sender"), by.y = c("receiver"), all.x = TRUE, all.y = TRUE) %>% 
       .[ , -c("receiver") ] %>%
@@ -936,8 +927,7 @@ print(nrow(temp))
       .[ , past_sender_business := sapply(past_sender_business, function(x) list(eval(parse(text = x))))] %>%
       .[ , past_nbh_incohesion := sapply(past_nbh_incohesion, function(x) list(eval(parse(text = x))))] %>%
       .[ , past_self_incohesion := sapply(past_self_incohesion, function(x) list(eval(parse(text = x))))]
-print(nrow(sim$discourse_memory))
-dododododo <<- sim$discourse_memory
+
     sim$messages <- copy(sim$messages) %>%
       unique() %>%
       setnames(old = c("sender", "receiver"), new = c("receiver", "sender")) %>%
