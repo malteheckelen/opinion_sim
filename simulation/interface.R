@@ -5,10 +5,10 @@ setwd('/home/malte/GitHub/R_MaDisBe/simulation')
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
 ## decide where you're working
-mainDir <- '/home/malte/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
+mainDir <- '/home/heckelenme/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
 #mainDir <- '~/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
 setPaths(cachePath = "cache",
-         modulePath = "modules",
+         modulePath = "./modules",
          inputPath = "../data/inputs",
          outputPath = "../data/outputs")
 
@@ -32,21 +32,22 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "small_world", "rc_sh_model", "data_collection")
+modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
 
-times <- list(start = 0, end = 100)
+times <- list(start = 0, end = 2)
 
 parameters <- list(
   basic_setup = list(
     mu_opinion_distribution = 0,
-    sigma_opinion_distribution = 0.3,
-    no_agents = 50
+    sigma_opinion_distribution = 1.65,
+    no_agents = 50,
+    no.cores = 2
     ),
   small_world = list(
     dim = 1,
     nbh_size = 10,
     rewire_p = 0.6,
-    opinion_homophily = 0.3
+    opinion_homophily = 1
   ),
   #hegselmann_krause = list(
   #  epsilon = 0.3
@@ -55,35 +56,35 @@ parameters <- list(
   #  epsilon = 0.3,
   #  other_incons_tolerance = 0.4,
   #  self_incons_tolerance = 0.2,
-  #  opinion_memory_depth = 10,
+  #  opinion_memory_depth = 20,
   #  message_memory_depth = 20
   #)#,
-  #rc_energy_model = list(
-  #  epsilon = 0.3,
-  #  other_incons_tolerance = 0.1,
-  #  self_incons_tolerance = 0.1,
-  #  energy_level = 30,
-  #  restoration_factor = 30,
-  #  opinion_memory_depth = 10,
-  #  message_memory_depth = 20,
-  #  energy_params_memory_depth = 100,
-  #  initial_opinion_confidence = 0.01
-  #  )#,
-  rc_sh_model = list(
-  epsilon = 0.3,
-  other_incons_tolerance = 0.6,
-  self_incons_tolerance = 0.4,
-  energy_level = 100,
-  restoration_factor = 20,
-  opinion_memory_depth = 10,
-  message_memory_depth = 20,
-  energy_params_memory_depth = 100,
-  no_groups = 1,
-  expert_percentage = 0.1,
-  sigma_complexity = 1.75,
-  argumentation_memory_depth = 10,
-  initial_opinion_confidence = 0.01
-  )
+  rc_energy_model = list(
+    epsilon = 0.3,
+    other_incons_tolerance = 0.6,
+    self_incons_tolerance = 0.6,
+    energy_level = 30,
+    restoration_factor = 30,
+    opinion_memory_depth = 10,
+    message_memory_depth = 20,
+    energy_params_memory_depth = 100,
+    initial_opinion_confidence = 0.05
+    )#,
+  #rc_sh_model = list(
+  #epsilon = 0.3,
+  #other_incons_tolerance = 0.6,
+  #self_incons_tolerance = 0.4,
+  #energy_level = 100,
+  #restoration_factor = 20,
+  #opinion_memory_depth = 10,
+  #message_memory_depth = 20,
+  #energy_params_memory_depth = 100,
+  #no_groups = 1,
+  #expert_percentage = 0.1,
+  #sigma_complexity = 1.75,
+  #argumentation_memory_depth = 10,
+  #initial_opinion_confidence = 0.01
+  #)
 )
 
 paths <- getPaths()
@@ -91,6 +92,5 @@ paths <- getPaths()
 sim <- simInit(times = times, params = parameters, modules = modules, paths = paths)
 
 set.seed(1234)
-#profvis({
-  out <- spades(sim)
-#})
+
+p <- profvis({ out <- spades(sim) })
