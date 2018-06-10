@@ -206,12 +206,12 @@ rc_energy_modelInit <- function(sim) {
   sim$discourse_memory <- unique(sim$discourse_memory) 
   sim$discourse_memory[ , past_opinions := mcmapply(function(x) {list(
 		    ifelse(rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) > 1, 1,
-			    ifelse(rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) < 0, 0, rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) ) ) )  }, x = opinion_sender, mc.cores=params(sim)$rc_energy_model$no.cores )] 
+			    ifelse(rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) < 0, 0, rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) ) ) )  }, x = opinion_sender, mc.cores=params(sim)$basic_setup$no.cores )] 
   setnames(sim$discourse_memory, "opinion_sender", "opinion") 
   sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, past_opinions)] 
   sim$discourse_memory[ , past_opinions := as.character(past_opinions) ]
   sim$discourse_memory <- unique(sim$discourse_memory)
-  sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+  sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$discourse_memory[ , sender_business := 0 ] 
   sim$discourse_memory[ , receiver_business := 0 ]
   
@@ -247,7 +247,7 @@ rc_energy_modelInit <- function(sim) {
                  )
                }
         )
-      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[, distance_message_opinion := mcmapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -257,7 +257,7 @@ rc_energy_modelInit <- function(sim) {
                  abs(a - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=opinion_sender, b=opt_message, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[, distance_message_assumption := mcmapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
@@ -267,7 +267,7 @@ rc_energy_modelInit <- function(sim) {
                  abs(c - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores )]
+      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions, mc.cores=params(sim)$basic_setup$no.cores )]
     sim$actions_send[ , past_opinions := NULL ][ , receiver := NULL ] 
     sim$actions_send[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] 
     sim$actions_send[ , agent_id := sender ] 
@@ -320,14 +320,14 @@ rc_energy_modelInit <- function(sim) {
 		      y,
 		      z)
 
-				   }, x=best_action, y=opinion_sender, z=opt_message, mc.cores=params(sim)$rc_energy_model$no.cores  ) ]
+				   }, x=best_action, y=opinion_sender, z=opt_message, mc.cores=params(sim)$basic_setup$no.cores  ) ]
     sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
                                    mcmapply(function(x, y) {
                                      list(c(unlist(x), y))
-                                   }, x=past_opinions, y=opinion_sender, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                   }, x=past_opinions, y=opinion_sender, mc.cores=params(sim)$basic_setup$no.cores  ),
                                    mcmapply(function(x, y) {
                                      list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                   }, x=past_opinions, y=opinion_sender, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                   }, x=past_opinions, y=opinion_sender, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
     setnames(sim$discourse_memory, "opinion_sender", "opinion")
     setnames(sim$discourse_memory, "opt_message", "message") 
@@ -335,8 +335,8 @@ rc_energy_modelInit <- function(sim) {
     sim$discourse_memory[ , past_messages := as.character(past_messages) ]
     sim$discourse_memory[ , past_opinions := as.character(past_opinions) ] 
     sim$discourse_memory <- unique(sim$discourse_memory) 
-    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores  )]
+    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$basic_setup$no.cores  )] 
+    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores  )]
 
     temp <- copy(sim$discourse_memory)[ , .(receiver, receiver_business)] 
     temp[ , receiver_business := max(receiver_business), by=receiver]
@@ -344,8 +344,8 @@ rc_energy_modelInit <- function(sim) {
 
     sim$discourse_memory <- merge(copy( sim$discourse_memory)[ , -c("receiver_business")], temp, by.x = c("sender"), by.y = c("receiver"), all.x = TRUE) 
     sim$discourse_memory[ , receiver := NULL ] 
-    sim$discourse_memory[ , past_receiver_business := ifelse( !is.na(receiver_business), mcmapply(function(x) list(x), x=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores   ), 0 ) ]
-    sim$discourse_memory[ , past_sender_business := ifelse( !is.na(sender_business), mcmapply(function(x) list(x), x=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores   ), 0 ) ] 
+    sim$discourse_memory[ , past_receiver_business := ifelse( !is.na(receiver_business), mcmapply(function(x) list(x), x=receiver_business, mc.cores=params(sim)$basic_setup$no.cores   ), 0 ) ]
+    sim$discourse_memory[ , past_sender_business := ifelse( !is.na(sender_business), mcmapply(function(x) list(x), x=sender_business, mc.cores=params(sim)$basic_setup$no.cores   ), 0 ) ] 
     setkey(sim$messages, "sender", "receiver") # for nbh_incohesion lookup
     sim$discourse_memory[ , nbh_incohesion := vec_get_nbh_incohesion( sender ) ] 
     sim$discourse_memory[ , past_nbh_incohesion := ifelse( !is.na(nbh_incohesion), sapply(nbh_incohesion, function(x) list(x) ), 0 ) ]
@@ -358,12 +358,12 @@ rc_energy_modelInit <- function(sim) {
     sim$discourse_memory[ , past_nbh_incohesion := as.character(past_nbh_incohesion) ] 
     sim$discourse_memory[ , past_self_incohesion := as.character(past_self_incohesion) ] 
     sim$discourse_memory <- unique(sim$discourse_memory) 
-    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores    )] 
-    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )]
-    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$basic_setup$no.cores  )] 
+    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores    )] 
+    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )]
+    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$basic_setup$no.cores  )] 
+    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )] 
+    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )] 
     
     #########################
     #### "SEND" MESSAGES ####
@@ -391,7 +391,7 @@ rc_energy_modelInit <- function(sim) {
  merge_receiver_opinions[ , past_opinions := as.character(past_opinions) ]
  setkey(merge_receiver_opinions, "sender")
  merge_receiver_opinions <- unique(merge_receiver_opinions)
- merge_receiver_opinions[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores   ) ]
+ merge_receiver_opinions[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores   ) ]
 
  sim$opinion_updating <- unique(copy(sim$messages)[ , -c("actions", "best_action")])[copy(actions_overall)[ best_action == actions ], on = c("receiver" = "agent_id"), nomatch = 0L ] 
  sim$opinion_updating <- sim$opinion_updating[ best_action == actions ] 
@@ -406,7 +406,7 @@ rc_energy_modelInit <- function(sim) {
             abs(x - b)
           })
         )
-      }, a=past_opinions, b=assumption_sender, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_opinions, b=assumption_sender, mc.cores=params(sim)$basic_setup$no.cores  )] 
  sim$opinion_updating[ , within_epsilon := abs(opinion_receiver - assumption_sender) < params(sim)$rc_energy_model$epsilon]
  sim$opinion_updating[ , self_consistent := distance_to_past_opinions < params(sim)$rc_energy_model$self_incons_tolerance]
  sim$opinion_updating <- sim$opinion_updating[ within_epsilon == TRUE & self_consistent == TRUE ] 
@@ -469,18 +469,18 @@ setkey(sim$discourse_memory, "sender")
   sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
   sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )]
 setkey(sim$agent_characteristics, "agent_id")
   sim$agent_characteristics[ , energy := energy + params(sim)$rc_energy_model$restoration_factor ]
@@ -568,17 +568,17 @@ setkey(sim$chosen_actions, "agent_id", "action_type", "best_action")
             abs(x - b)
           })
         )
-      }, a=past_opinions, b=assumption_receiver, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_opinions, b=assumption_receiver, mc.cores=params(sim)$basic_setup$no.cores  )] 
   sim$actions_overall_temp <- sim$actions_overall_temp[ , .(distance_to_past_opinions, sender, past_self_incohesion, past_nbh_incohesion, sender_business, receiver_business, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion, max_send_energy_loss, max_receive_energy_loss)] 
   sim$actions_overall_temp[ , past_receiver_business := as.character(past_receiver_business) ] 
   sim$actions_overall_temp[ , past_sender_business := as.character(past_sender_business) ] 
   sim$actions_overall_temp[ , past_nbh_incohesion := as.character(past_nbh_incohesion) ]
   sim$actions_overall_temp[ , past_self_incohesion := as.character(past_self_incohesion) ]
   sim$actions_overall_temp <- unique(sim$actions_overall_temp) 
-  sim$actions_overall_temp[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )]
-  sim$actions_overall_temp[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-  sim$actions_overall_temp[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
-  sim$actions_overall_temp[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+  sim$actions_overall_temp[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )]
+  sim$actions_overall_temp[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$basic_setup$no.cores  )] 
+  sim$actions_overall_temp[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )] 
+  sim$actions_overall_temp[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )] 
   sim$actions_overall_temp[ , control := mean(distance_to_past_opinions) , by=sender ] 
   sim$actions_overall_temp <- sim$actions_overall_temp[unique(sim$agent_characteristics[ , .(agent_id, energy)] ), on=c("sender" = "agent_id") ] 
   sim$actions_overall_temp[ , rec_business_mean_index := mcmapply(function(x, y) {
@@ -587,14 +587,14 @@ setkey(sim$chosen_actions, "agent_id", "action_type", "best_action")
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_receiver_business, y=max_receive_energy_loss, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_receiver_business, y=max_receive_energy_loss, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall_temp[ , send_business_mean_index := mcmapply(function(x, y) {
 
       is_na <- sum(unlist(x)) / (y*length(unlist(x)))
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_sender_business, y=max_send_energy_loss, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_sender_business, y=max_send_energy_loss, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall_temp[ , rec_business_mean := mcmapply(function(x, y) {
      
 series <- rev(unlist(x))
@@ -608,7 +608,7 @@ new_series <- vector()
       }
       ifelse(is.na(mean(new_series)), y, new_series)
 
-    }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall_temp[ , send_business_mean := mcmapply(function(x, y) {
 
 series <- rev(unlist(x))
@@ -622,7 +622,7 @@ new_series <- vector()
       }
       ifelse(is.na(mean(new_series)), y, new_series)
 
-    }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall_temp[ , both_business_mean := mcmapply(function(x, y, a, b) {
 
 series <- rev(unlist(x))
@@ -650,7 +650,7 @@ new_series_two <- vector()
 
       mean( mean_one, mean_two )
 
-    }, x=past_sender_business, y=past_receiver_business, a=sender_business, b=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_sender_business, y=past_receiver_business, a=sender_business, b=receiver_business, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall_temp[ , both_business_mean_index := mcmapply(function(x, y, z, a) {
 
       numerator <- sum( c(unlist(x), unlist(y)) )
@@ -661,7 +661,7 @@ new_series_two <- vector()
       
       ifelse(is.na(is_na), 0, is_na)
 
-    }, x=past_sender_business, y=past_receiver_business, z = max_receive_energy_loss, a = max_send_energy_loss, mc.cores=params(sim)$rc_energy_model$no.cores   )] 
+    }, x=past_sender_business, y=past_receiver_business, z = max_receive_energy_loss, a = max_send_energy_loss, mc.cores=params(sim)$basic_setup$no.cores   )] 
   sim$actions_overall <- sim$actions_overall_temp[sim$actions_overall[ , -c("best_action")], on=c("sender" = "agent_id"), allow.cartesian = TRUE] 
   setnames(sim$actions_overall, "sender", "agent_id") 
   sim$actions_overall[ actions == "Send" , energy_loss := ( energy - sender_business )] 
@@ -675,7 +675,7 @@ new_series_two <- vector()
 	    
 	    sum(x, y)
 	   
-    }, x=nbh_incohesion, y=self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )  ] 
+    }, x=nbh_incohesion, y=self_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )  ] 
   sim$actions_overall[ actions == "Send", util_score :=
          ifelse(projected_energy <= 0, 0, projected_energy) + ( 1 - self_incohesion) ] 
   sim$actions_overall[ actions == "Receive", util_score := 
@@ -754,10 +754,10 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
   sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
                                  mcmapply(function(x, y) {
                                    list(c(unlist(x), y))
-                                 }, x=past_opinions, y=opinion, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                 }, x=past_opinions, y=opinion, mc.cores=params(sim)$basic_setup$no.cores  ),
                                  mcmapply(function(x, y) {
                                    list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                 }, x=past_opinions, y=opinion, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                 }, x=past_opinions, y=opinion, mc.cores=params(sim)$basic_setup$no.cores  )
     )] 
   sim$discourse_memory[ ,assumption_receiver := NULL ][ , opt_message := NULL ]
 
@@ -788,7 +788,7 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
                  )
                }
         )
-      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[, distance_to_past_messages := mcmapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
@@ -806,7 +806,7 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
                  )
                }
         )
-      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[, distance_message_opinion := mcmapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -816,7 +816,7 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
                  abs(a - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=opinion_sender, b=opt_message, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[, distance_message_assumption := mcmapply(function(a,b,c,k) {
         switch(k,
                "Unoptimized" = {
@@ -826,7 +826,7 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
                  abs(c - b)
                }
         )
-      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$actions_send[ , past_opinions := NULL ][ , receiver := NULL ] 
     sim$actions_send[ , util_score := 0 - distance_to_past_messages - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] 
     setnames(sim$actions_send, "sender", "agent_id")
@@ -880,17 +880,17 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
                                                ifelse( best_action == "Unoptimized",
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_messages, y=opinion, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_messages, y=opinion, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_messages, y=opt_message, mc.cores=params(sim)$rc_energy_model$no.cores  )),
+                                          }, x=past_messages, y=opt_message, mc.cores=params(sim)$basic_setup$no.cores  )),
                                    ifelse( best_action == "Unoptimized",
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opinion, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_messages, y=opinion, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opt_message, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                          }, x=past_messages, y=opt_message, mc.cores=params(sim)$basic_setup$no.cores  )
                                    )
                                  )
       )] 
@@ -921,38 +921,38 @@ setkey(sim$actions_overall, "agent_id", "best_action", "actions")
     sim$discourse_memory[ , past_nbh_incohesion := as.character(past_nbh_incohesion) ] 
     sim$discourse_memory[ , past_self_incohesion := as.character(past_self_incohesion) ] 
     sim$discourse_memory <- unique(sim$discourse_memory)
-    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x= past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x = past_receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores )]
+    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x= past_opinions, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x = past_receiver_business, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$basic_setup$no.cores )]
     setkey(sim$messages, "sender", "receiver")
     sim$discourse_memory[ , nbh_incohesion := vec_get_nbh_incohesion(sender) ] 
     sim$discourse_memory[ , self_incohesion := vec_get_self_incohesion( sender ) ] 
     sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
     sim$discourse_memory[ , past_nbh_incohesion := ifelse(lengths(past_nbh_incohesion) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                          mcmapply(function(x, y) {
                                            list(c(unlist(x), y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                         }, x=past_nbh_incohesion, y=nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores  ),
                                          mcmapply(function(x, y) {
                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                         }, x=past_nbh_incohesion, y=nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
     sim$discourse_memory[ , past_self_incohesion := ifelse(lengths(past_self_incohesion) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_self_incohesion, y=self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_self_incohesion, y=self_incohesion, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                          }, x=past_self_incohesion, y=self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                          }, x=past_self_incohesion, y=self_incohesion, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
 
     sim$messages_temp <- unique(copy(sim$messages)) 
@@ -976,12 +976,12 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
     merge_receiver_opinions <- copy(sim$discourse_memory)[ , .(sender, past_opinions)]
     merge_receiver_opinions[ , past_opinions := as.character(past_opinions) ]
     merge_receiver_opinions <- unique(merge_receiver_opinions)
-    merge_receiver_opinions[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores  ) ]
+    merge_receiver_opinions[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores  ) ]
 
     merge_sender_messages <- copy(sim$discourse_memory)[ , .(sender, past_messages)]
     merge_sender_messages[ , past_messages := as.character(past_messages) ]
     merge_sender_messages <- unique(merge_sender_messages)
-    merge_sender_messages[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$rc_energy_model$no.cores  ) ]
+    merge_sender_messages[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$basic_setup$no.cores  ) ]
 
     sim$opinion_updating <- copy(sim$messages)[ ( receiver %in% sim$bothers | receiver %in% sim$senders | !( receiver %in% sim$nothingers) )  ]
     sim$opinion_updating <- unique(sim$opinion_updating) 
@@ -994,14 +994,14 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
             abs(x - b)
           })
         )
-      }, a=past_opinions, b=assumption_sender, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_opinions, b=assumption_sender, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$opinion_updating[ , distance_to_past_messages := mcmapply(function(a,b) {
 	     max(
 		sapply(a, function(x) {
 		      abs(x - b)
 		   })
 	   )
-      }, a=past_messages, b=assumption_sender, mc.cores=params(sim)$rc_energy_model$no.cores  )] 
+      }, a=past_messages, b=assumption_sender, mc.cores=params(sim)$basic_setup$no.cores  )] 
     sim$opinion_updating[ , trust := distance_to_past_messages < params(sim)$rc_energy_model$other_incons_tolerance] 
     sim$opinion_updating[ , within_epsilon := abs(opinion_receiver - assumption_sender) < params(sim)$rc_energy_model$epsilon] 
     sim$opinion_updating[ , self_consistent := distance_to_past_opinions < params(sim)$rc_energy_model$self_incons_tolerance] 
@@ -1059,10 +1059,10 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
     sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
     sim$discourse_memory[ , past_messages := as.character(past_messages) ] 
     sim$discourse_memory[ , past_opinions := as.character(past_opinions) ] 
@@ -1071,12 +1071,12 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
     sim$discourse_memory[ , past_nbh_incohesion := as.character(past_nbh_incohesion) ] 
     sim$discourse_memory[ , past_self_incohesion := as.character(past_self_incohesion) ] 
     sim$discourse_memory <- unique(sim$discourse_memory)
-    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x= past_opinions, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x = past_receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores )] 
-    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$rc_energy_model$no.cores )]
+    sim$discourse_memory[ , past_messages := mcmapply(function(x) list(eval(parse(text = x))), x=past_messages, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x= past_opinions, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_receiver_business := mcmapply(function(x) list(eval(parse(text = x))), x = past_receiver_business, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_sender_business := mcmapply(function(x) list(eval(parse(text = x))), x=past_sender_business, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_nbh_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_nbh_incohesion, mc.cores=params(sim)$basic_setup$no.cores )] 
+    sim$discourse_memory[ , past_self_incohesion := mcmapply(function(x) list(eval(parse(text = x))), x=past_self_incohesion, mc.cores=params(sim)$basic_setup$no.cores )]
 
     sim$discourse_memory <- sim$agent_characteristics[ , .(agent_id, opinion) ][sim$discourse_memory[ , -c("opinion")], on=c("agent_id" = "sender") ] 
     setnames(sim$discourse_memory, "agent_id", "sender") 
@@ -1093,10 +1093,10 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
     sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
 
 
@@ -1143,18 +1143,18 @@ print("this activates")
     sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                             mcmapply(function(x, y) {
                                               list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                            }, x=past_receiver_business, y=receiver_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )] 
     sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  ),
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  ),
                                           mcmapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$rc_energy_model$no.cores  )
+                                          }, x=past_sender_business, y=sender_business, mc.cores=params(sim)$basic_setup$no.cores  )
       )]
 
 sim$opinion_updating <- copy(sim$discourse_memory) 
@@ -1171,7 +1171,7 @@ new_series <- vector()
       }
       ifelse(is.na(median(new_series)), y, new_series)
 
-       }, x=past_opinions, y=opinion, mc.cores=params(sim)$rc_energy_model$no.cores   ) ] 
+       }, x=past_opinions, y=opinion, mc.cores=params(sim)$basic_setup$no.cores   ) ] 
 setnames(sim$opinion_updating, "sender", "agent_id") 
 sim$opinion_updating <- sim$opinion_updating[ , .(agent_id, opinion_receiver_new)] 
 setkey(sim$opinion_updating, "agent_id") 
