@@ -357,7 +357,8 @@ rc_modelStep <- function(sim) {
   sim$messages[ , opt_message := median(opt_message), by = .(sender)] 
   
   # Sending
-
+print("messages")
+print(nrow(sim$messages))
   sim$actions_send <- copy(sim$messages)[copy(sim$actions_send), on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE]
   sim$actions_send <- sim$actions_send[copy(sim$discourse_memory), on = c("sender"), nomatch = 0L, allow.cartesian = TRUE]
   sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
@@ -406,17 +407,17 @@ rc_modelStep <- function(sim) {
  sim$actions_send <- unique(sim$actions_send)
  sim$actions_send[, util_score := sum(util_score), by=c("agent_id", "actions")]
  sim$actions_send <- unique(sim$actions_send)
-
+print(nrow(sim$messages))
  sim$actions_send_cast <- dcast(sim$actions_send, agent_id ~ actions, value.var = "util_score")
  sim$actions_send_cast[, best_action :=  ifelse(Optimized > Unoptimized, "Optimized", "Unoptimized")]
-
+print(nrow(sim$messages))
  sim$actions_send <- melt( sim$actions_send_cast,
 	 id.vars = c("agent_id", "best_action"),
          measure.vars = c("Optimized", "Unoptimized"),
          variable.name = "actions",
          value.name = "util_score" )
  sim$actions_send[ , agent_id := as.integer(agent_id) ]
- 
+print(nrow(sim$actions_send))
  sim$chosen_actions <- merge(copy(sim$actions_send)[ actions == best_action , .(agent_id, best_action) ], sim$chosen_actions, by=c("agent_id"), all.x=TRUE, all.y=TRUE)
  sim$chosen_actions[ , best_action := ifelse(!is.na(best_action.x), best_action.x,  "NOT ASSIGNED")] 
  sim$chosen_actions[ , best_action.x := NULL ][ , best_action.y := NULL ]

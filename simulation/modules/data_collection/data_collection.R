@@ -48,7 +48,7 @@ data_collectionInit <- function(sim) {
           no_Optimized <-  sim$chosen_actions[best_action == "Optimized"] %>% nrow
           
 	  if ("rc_model" %in% modules) {
-               
+   
 	       sim$data_collect <- tibble(
               
                time = time(sim),
@@ -108,7 +108,7 @@ data_collectionStep <- function(sim) {
           no_Optimized <-  sim$chosen_actions[best_action == "Optimized"] %>% nrow
           
 	  if ("rc_model" %in% modules) {
-               
+
 	       temp <- tibble(
               
                time = time(sim),
@@ -156,7 +156,7 @@ data_collectionStep <- function(sim) {
      	data.table()
    
   }
-  
+
   sim$data_collect <- temp %>%
     rbind(sim$data_collect)
   

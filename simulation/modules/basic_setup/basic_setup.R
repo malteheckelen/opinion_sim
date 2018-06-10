@@ -12,13 +12,13 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "data_collection.Rmd"),
-  reqdPkgs = list("dplyr"),
+  reqdPkgs = list("dplyr", "data.table", "logitnorm"),
   parameters = bind_rows(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
     defineParameter("sigma_opinion_distribution", "numeric", 1, NA, NA, "The sigma parameter of the lognormal opinion distribution."),
-    defineParameter("mu_opinion_distribution", "numeric", 1, NA, NA, "The mu parameter of the lognormal opinion distribution.")
-
+    defineParameter("mu_opinion_distribution", "numeric", 1, NA, NA, "The mu parameter of the lognormal opinion distribution."),
+    defineParameter("no.cores", "numeric", 1, NA, NA, "The number of cores for parallelization. If not needed / wanted, the default is one core."),
   ),
   outputObjects = bind_rows(
     createsOutput("no_agents", "numeric", "The number of agents."),
