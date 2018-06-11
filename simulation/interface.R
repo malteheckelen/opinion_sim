@@ -1,6 +1,6 @@
 ### Interface
 
-setwd('/home/malte/GitHub/R_MaDisBe/simulation')
+setwd('/home/heckelenme/GitHub/R_MaDisBe/simulation')
 #setwd('~/GitHub/R_MaDisBe/simulation')
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 
@@ -32,22 +32,22 @@ setPaths(cachePath = "cache",
 
 # interact()
 
-modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection")
+modules <- list("basic_setup", "small_world", "rc_energy_model", "data_collection" )
 
-times <- list(start = 0, end = 2)
+times <- list(start = 0, end = 50)
 
 parameters <- list(
   basic_setup = list(
     mu_opinion_distribution = 0,
-    sigma_opinion_distribution = 1.65,
-    no_agents = 50,
-    no.cores = 2
+    sigma_opinion_distribution = 0.6,
+    no_agents = 100, 
+    no.cores = 1
     ),
   small_world = list(
     dim = 1,
     nbh_size = 10,
     rewire_p = 0.6,
-    opinion_homophily = 1
+    opinion_homophily = 0.4
   ),
   #hegselmann_krause = list(
   #  epsilon = 0.3
@@ -71,17 +71,17 @@ parameters <- list(
     initial_opinion_confidence = 0.05
     )#,
   #rc_sh_model = list(
-  #epsilon = 0.3,
-  #other_incons_tolerance = 0.6,
-  #self_incons_tolerance = 0.4,
+  #epsilon = 0.2,
+  #other_incons_tolerance = 0.2,
+  #self_incons_tolerance = 0.2,
   #energy_level = 100,
   #restoration_factor = 20,
   #opinion_memory_depth = 10,
   #message_memory_depth = 20,
   #energy_params_memory_depth = 100,
-  #no_groups = 1,
+  #no_groups = 3,
   #expert_percentage = 0.1,
-  #sigma_complexity = 1.75,
+  #sigma_complexity = 0.6,
   #argumentation_memory_depth = 10,
   #initial_opinion_confidence = 0.01
   #)
