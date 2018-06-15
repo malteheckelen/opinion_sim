@@ -898,10 +898,10 @@ new_series_two <- vector()
   sim$actions_overall <- unique(sim$actions_overall)
   setkey(sim$actions_overall, agent_id)
 
-  sim$bothers <- sim$actions_overall[ "Both", .SD[1], by="agent_id", on="best_action" ]$agent_id
-  sim$senders <- sim$actions_overall[ "Send", .SD[1], by="agent_id", on="best_action" ]$agent_id
-  sim$receivers <- sim$actions_overall[ "Receiver", .SD[1], by="agent_id", on="best_action" ]$agent_id
-  sim$nothingers <- sim$actions_overall[ "Nothing", .SD[1], by="agent_id", on="best_action" ]$agent_id
+  sim$bothers <- sim$actions_overall[ "Both", .SD[1], by="agent_id", on="best_action", nomatch=0L ]$agent_id
+  sim$senders <- sim$actions_overall[ "Send", .SD[1], by="agent_id", on="best_action", nomatch=0L ]$agent_id
+  sim$receivers <- sim$actions_overall[ "Receiver", .SD[1], by="agent_id", on="best_action", nomatch=0L ]$agent_id
+  sim$nothingers <- sim$actions_overall[ "Nothing", .SD[1], by="agent_id", on="best_action", nomatch=0L ]$agent_id
 
   ###################################
   #### UPDATE sim$chosen_actions ####
@@ -939,6 +939,7 @@ new_series_two <- vector()
           value.name = "opt_message" ) 
   setkey(sim$messages_temp, "sender", "receiver")
   sim$messages_temp <- sim$messages_temp[ sender != receiver ] 
+  sim$messages_temp <- unique(sim$messages_temp)
   sim$messages_temp <- setkey(sim$messages_temp, "sender") 
   sim$messages_temp <- unique(sim$messages_temp) 
   sim$messages_temp[ , sender := as.integer(sender)] 
@@ -978,7 +979,7 @@ new_series_two <- vector()
 
    if( (length(sim$bothers) > 0) | (length(sim$senders) > 0)  ) {
 
-    sim$actions_send_temp <- sim$messages[sim$actions_overall[ .(c("Both", "Send")), on="best_action" ]  , on = c("sender" = "agent_id"), nomatch = 0L ] 
+    sim$actions_send_temp <- sim$messages[sim$actions_overall[ .(c("Both", "Send")), on="best_action", nomatch=0L ]  , on = c("sender" = "agent_id"), nomatch = 0L ] 
     sim$actions_send_temp <- sim$actions_send_temp[ , .(sender , receiver , opt_message , opinion_sender , assumption_receiver)] 
     sim$actions_send <- sim$actions_send_temp[sim$actions_send, on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE] 
     sim$actions_send <- sim$actions_send[sim$discourse_memory, on = c("sender"), nomatch = 0L] 
@@ -1096,13 +1097,12 @@ new_series_two <- vector()
         )
       }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)] 
     sim$actions_send[ , past_opinions := NULL ][ , receiver := NULL ] 
-    sim$actions_send[ .("Unoptimized") , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions"] 
-    sim$actions_send[ .("Unoptimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions"] 
-    sim$actions_send[ .("Optimized"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions"] 
-    sim$actions_send[ .("Optimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions"] 
+    sim$actions_send[ .("Unoptimized") , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions", nomatch=0L] 
+    sim$actions_send[ .("Unoptimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions", nomatch=0L] 
+    sim$actions_send[ .("Optimized"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions", nomatch=0L] 
+    sim$actions_send[ .("Optimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions", nomatch=0L] 
     sim$actions_send <- sim$actions_send[ , agent_id := sender ] 
     sim$actions_send <- sim$actions_send[ , .(agent_id, actions, util_score)] 
-    sim$actions_send <- unique(sim$actions_send) 
     sim$actions_send[, util_score := sum(util_score), by=c("agent_id", "actions")] 
     sim$actions_send <- unique(sim$actions_send) 
     sim$actions_send <- dcast(sim$actions_send,
@@ -1182,14 +1182,14 @@ new_series_two <- vector()
     sim$discourse_memory[ , past_messages := ifelse( is.na(best_action),
             past_messages,
             ifelse(lengths(past_messages) < params(sim)$rc_sh_model$message_memory_depth,
-                                   ifelse( best_action == "Unoptimized",
+                                   ifelse( (best_action == "Unoptimized" | best_action == "Unoptimized_appeal") ,
                                           mapply(function(x, y) {
                                             list(c(unlist(x), y))
                                           }, x=past_messages, y=opinion),
                                           mapply(function(x, y) {
                                             list(c(unlist(x), y))
                                           }, x=past_messages, y=opt_message)),
-                                   ifelse( best_action == "Unoptimized",
+                                   ifelse( (best_action == "Unoptimized" | best_action == "Unoptimized_appeal") ,
                                           mapply(function(x, y) {
                                             list(c(unlist(x)[1:params(sim)$rc_sh_model$message_memory_depth], y))
                                           }, x=past_messages, y=opinion),
@@ -1199,7 +1199,8 @@ new_series_two <- vector()
                                    )
                                  )
       )]
-    sim$discourse_memory[ , message := ifelse(is.na(opt_message), message, opt_message) ] 
+    sim$discourse_memory[ is.na(opt_message) , message := message ] 
+    sim$discourse_memory[ !is.na(opt_message) , message := ifelse( ( best_action == "Unoptimized" | best_action == "Unoptimized_appeal" ), opinion, opt_message) ] 
     sim$discourse_memory[ , opt_message := NULL ] 
     sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, message, op_compl, msg_compl, past_messages, past_opinions, past_op_compls, past_msg_compls, sender_business, receiver_business, past_sender_business, past_receiver_business, past_nbh_incohesion, past_self_incohesion)] 
     sim$discourse_memory <- sim$discourse_memory[ !duplicated(sim$discourse_memory[ , as.logical(lapply(sim$discourse_memory, function(x) !is.list(x) ) ) , with = FALSE ]) , ]
@@ -1643,9 +1644,9 @@ produce_altered_message <- function(opinion_send, message_receive) {
 
 get_nbh_incohesion <- function( id ) {
 
-  nbh_indices <- sim$agent_characteristics[ agent_id == id , neighborhood ][[1]] 
+  nbh_indices <- sim$agent_characteristics[ .(id) , neighborhood, on="agent_id" ][[1]] 
 
-  nbh_assumptions <- sim$messages[ sender == id & receiver %in% nbh_indices , assumption_receiver ]
+  nbh_assumptions <- sim$messages[ .(id, nbh_indices) , assumption_receiver, on=c("sender", "receiver") ]
 
   mean_deviations <- sapply(sum(as.vector(abs(outer(nbh_assumptions, nbh_assumptions, Vectorize("-")) ) ) ),  "/", ((length(nbh_assumptions)*length(nbh_assumptions)) - length(nbh_assumptions)) ) # mean not appropriate, 0 values of diagonal factor in denominator
 
@@ -1659,7 +1660,7 @@ vec_get_nbh_incohesion <- Vectorize(get_nbh_incohesion)
 
 get_self_incohesion <- function( id ) {
 
-  past <- sim$discourse_memory[ sender == id, past_opinions ][[1]]
+  past <- sim$discourse_memory[ .(id),  past_opinions, on="sender" ][[1]]
 
   mean_deviations <- sapply(sum(as.vector(abs(outer(past, past, Vectorize("-")) ) ) ),  "/", ((length(past)*length(past)) - length(past)) )
 
