@@ -27,11 +27,9 @@ defineModule(sim, list(
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
     defineParameter("other_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which other agents to have varying opinions over time."),
     defineParameter("self_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which the agent himself has varying opinions over time."),
-    defineParameter("message_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember messages for."),
-    defineParameter("opinion_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember opinions for."),
+    defineParameter("memory", "numeric", 1, NA, NA, "The number of time steps agents remember messages for."),
     defineParameter("energy_level", "numeric", 100, NA, NA, "The starting energy level of every agent."),
     defineParameter("restoration_factor", "numeric", 20, NA, NA, "The number of energy units that are restored to agents at the end of every round."),
-    defineParameter("energy_params_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember statistics relevant for overall action selection for."),
     defineParameter("initial_opinion_confidence", "numeric", 1, NA, NA, "The standard deviation of past opinions (centered around the current opinion).")
   ),
   inputObjects = bind_rows(
@@ -205,9 +203,9 @@ rc_energy_modelInit <- function(sim) {
   ##########################################
 
   sim$discourse_memory <- sim$messages[ , -c("receiver", "assumption_receiver") ] 
-  sim$discourse_memory[ , past_opinions := mapply(function(x) {list(
-		    ifelse(rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) > 1, 1,
-			    ifelse(rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) < 0, 0, rnorm(params(sim)$rc_energy_model$opinion_memory_depth, x, params(sim)$rc_energy_model$initial_opinion_confidence) ) ) )  }, x = opinion_sender )] 
+  sim$discourse_memory[ , past_opinions := sapply(opinion_sender, function(x) {list(
+		    ifelse(rnorm(times(sim)$end[1], x, params(sim)$rc_energy_model$initial_opinion_confidence) > 1, 1,
+			    ifelse(rnorm(times(sim)$end[1], x, params(sim)$rc_energy_model$initial_opinion_confidence) < 0, 0, rnorm(times(sim)$end[1], x, params(sim)$rc_energy_model$initial_opinion_confidence) ) ) )  } )] 
   setnames(sim$discourse_memory, "opinion_sender", "opinion") 
   sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, past_opinions)] 
   sim$discourse_memory <- sim$discourse_memory[ , .SD[1], by="sender" ]
@@ -226,25 +224,84 @@ rc_energy_modelInit <- function(sim) {
     sim$actions_send_temp <- sim$actions_send_temp[ , .(sender , receiver , opt_message , opinion_sender , assumption_receiver) ]
     sim$actions_send <- sim$actions_send_temp[sim$actions_send, on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] 
     sim$actions_send <- sim$actions_send[sim$discourse_memory, on = c("sender"), nomatch = 0L] 
+    sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
+        switch(k,
+               "Unoptimized" = {
+                 abs(a - a)
+               },
+               "Optimized" = {
+                 abs(a - b)
+               },
+               "Unoptimized_appeal" = {
+                 abs(a - a)
+               },
+               "Optimized_appeal" = {
+                 abs(a - b)
+               }
+        )
+      }, a=opinion_sender, b=opt_message, k=actions)] 
+    sim$actions_send[, distance_message_assumption := mapply(function(a,b,c,k) {
+        switch(k,
+               "Unoptimized" = {
+                 abs(c - a)
+               },
+               "Optimized" = {
+                 abs(c - b)
+               },
+               "Unoptimized_appeal" = {
+                 abs(c - a)
+               },
+               "Optimized_appeal" = {
+                 abs(c - b)
+               }
+        )
+      }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)] 
     sim$actions_send[ , past_opinions := mapply(function(x) list(eval(parse(text = x))), x=past_opinions )] 
-    sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+    sim$actions_send_temp <- copy(sim$actions_send)[ , -c("receiver", "assumption_receiver") ]
+    sim$actions_send_temp <- sim$actions_send_temp[ , .SD[1], by="sender", nomatch=0L ]
+    sim$actions_send_temp[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
+                     abs(x - b)
+                   })
+                 )
+               },
+               "Unoptimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                }
         )
-      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions  )] 
+      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)]
     sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -266,6 +323,7 @@ rc_energy_modelInit <- function(sim) {
         )
       }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions )]
     sim$actions_send[ , past_opinions := NULL ][ , receiver := NULL ] 
+    sim$actions_send <- sim$actions_send_temp[ , .(sender, distance_to_past_opinions) ][sim$actions_send, on="sender" ]
     sim$actions_send[ , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] 
     sim$actions_send[ , agent_id := sender ] 
     sim$actions_send[ , .(agent_id, actions, util_score)]
@@ -315,15 +373,12 @@ rc_energy_modelInit <- function(sim) {
 		      z)
 
 				   }, x=best_action, y=opinion_sender, z=opt_message  ) ]
-    sim$discourse_memory[ , past_opinions := mcmapply(function(x) list(eval(parse(text = x))), x=past_opinions, mc.cores=params(sim)$basic_setup$no.cores    )] 
-    sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
-                                   mapply(function(x, y) {
-                                     list(c(unlist(x), y))
-                                   }, x=past_opinions, y=opinion_sender  ),
-                                   mapply(function(x, y) {
-                                     list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                   }, x=past_opinions, y=opinion_sender  )
-      )] 
+    sim$discourse_memory[ , past_opinions := mapply(function(x) list(eval(parse(text = x))), x=past_opinions)] 
+    sim$discourse_memory[ , past_messages:= mapply(function(x) list(eval(parse(text = x))), x=past_messages)] 
+    sim$discourse_memory[ , past_opinions := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_opinions, y=opinion_sender )
+   ]
     setnames(sim$discourse_memory, "opinion_sender", "opinion")
     setnames(sim$discourse_memory, "opt_message", "message") 
     sim$discourse_memory <- sim$discourse_memory[ , .(sender, receiver, opinion, message, past_messages, past_opinions, sender_business, receiver_business)]
@@ -371,12 +426,23 @@ rc_energy_modelInit <- function(sim) {
  sim$opinion_updating <- sim$opinion_updating[ , .(sender, receiver, opinion_receiver, assumption_sender, opt_message, best_action)]
  sim$opinion_updating <- sim$opinion_updating[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L] 
  sim$opinion_updating[ , distance_to_past_opinions := mapply(function(a,b) {
-        mean(
-          sapply(a, function(x) {
-            abs(x - b)
-          })
-        )
-      }, a=past_opinions, b=assumption_sender  )] 
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
+		mean(
+		  sapply(new_series, function(x) {
+		    abs(x - b)
+		  })
+		)
+ }, a=past_opinions, b=assumption_sender)] 
  sim$opinion_updating[ , past_opinions := NULL ]
  sim$opinion_updating[ , within_epsilon := abs(opinion_receiver - assumption_sender) < params(sim)$rc_energy_model$epsilon]
  sim$opinion_updating[ , self_consistent := distance_to_past_opinions < params(sim)$rc_energy_model$self_incons_tolerance]
@@ -542,7 +608,7 @@ new_series <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
 	      new_series <- c(new_series, series[i])
       }
       }
@@ -556,7 +622,7 @@ new_series <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory) {
 	      new_series <- c(new_series, series[i])
       }
       }
@@ -570,7 +636,7 @@ new_series_one <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory) {
 	      new_series_one <- c(new_series_one, series[i])
       }
       }
@@ -582,7 +648,7 @@ new_series_two <- vector()
 
       for (i in 1:length(y)) {
 
-	      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory) {
 	      new_series_two <- c(new_series_two, series[i])
       }
       }
@@ -698,14 +764,10 @@ new_series_two <- vector()
   #######################################################
 
   sim$discourse_memory <- sim$discourse_memory[ , opinion := NULL ][sim$agent_characteristics[ , .(agent_id, opinion) ], on=c("sender" = "agent_id")] 
-  sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_energy_model$opinion_memory_depth,
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x), y))
-                                 }, x=past_opinions, y=opinion  ),
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                 }, x=past_opinions, y=opinion  )
-    )] 
+  sim$discourse_memory[ , past_opinions := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_opinions, y=opinion )
+   ]
   setkey(sim$discourse_memory, sender)
 
   if( length(c(sim$bothers, sim$senders)) > 0 )  {
@@ -718,42 +780,94 @@ new_series_two <- vector()
     sim$actions_send_temp <- sim$actions_send_temp[ , .(sender, receiver , opt_message , opinion_sender , assumption_receiver)] 
     sim$actions_send <- sim$actions_send_temp[sim$actions_send, on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE ] 
     sim$actions_send <- sim$actions_send[sim$discourse_memory, on = c("sender"), nomatch = 0L ] 
-    sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+    sim$actions_send_temp <- copy(sim$actions_send)[ , -c("receiver", "assumption_receiver") ]
+    sim$actions_send_temp <- sim$actions_send_temp[ , .SD[1], by="sender", nomatch=0L ]
+    sim$actions_send_temp[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
+                     abs(x - b)
+                   })
+                 )
+               },
+               "Unoptimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                }
         )
-      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions  )] 
-    sim$actions_send[, distance_to_past_messages := mapply(function(a,b,c,k) {
+      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)]
+    sim$actions_send_temp[, distance_to_past_messages := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
+                     abs(x - b)
+                   })
+                 )
+               },
+               "Unoptimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
+                     abs(x - c)
+                   })
+                 )
+               },
+               "Optimized_appeal" = {
+                 mean(
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                }
         )
-      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions  )] 
+      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions)]
     sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -775,6 +889,7 @@ new_series_two <- vector()
         )
       }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions  )] 
     sim$actions_send[ , past_opinions := NULL ][ , receiver := NULL ][ , past_messages := NULL ] 
+    sim$actions_send <- sim$actions_send_temp[ , .(sender, distance_to_past_messages, distance_to_past_opinions) ][sim$actions_send, on="sender" ]
     sim$actions_send[ , util_score := 0 - distance_to_past_messages - distance_to_past_opinions - distance_message_opinion - distance_message_assumption] 
     setnames(sim$actions_send, "sender", "agent_id")
     sim$actions_send <- sim$actions_send[, .(agent_id, actions, util_score) ] 
@@ -816,27 +931,18 @@ new_series_two <- vector()
     setkey(sim$discourse_memory_temp, "sender") 
     sim$discourse_memory_temp[ , opinion_sender := NULL ] 
     sim$discourse_memory <- merge(sim$discourse_memory_temp, sim$discourse_memory[ , -c("sender_business", "receiver_business", "assumption_receiver")], by=c("sender"), all.x=TRUE, all.y=TRUE) 
-    sim$discourse_memory[ , past_messages := ifelse( is.na(best_action),
-            past_messages,
-            ifelse(lengths(past_messages) < params(sim)$rc_energy_model$message_memory_depth,
-                                               ifelse( best_action == "Unoptimized",
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_messages, y=opinion  ),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_messages, y=opt_message  )),
-                                   ifelse( best_action == "Unoptimized",
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opinion  ),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opt_message  )
-                                   )
-                                 )
-      )] 
-    dwdwdw <<- sim$discourse_memory
+    sim$discourse_memory[ is.na(best_action) , past_messages := past_messages ]
+    sim$discourse_memory[ .(c("Unoptimized", "Unoptimized_appeal")) , 
+	    past_messages := mapply(function(x, y) {
+			    list(c(unlist(x), y))
+		 }
+	    , x=past_messages, y=opinion ), on="best_action" ]
+    sim$discourse_memory[ .(c("Optimized", "Optimized_appeal")) , 
+	    past_messages := mapply(function(x, y) {
+			    list(c(unlist(x), y))
+		 }
+	    , x=past_messages, y=opinion ), on="best_action" ]
+    
     sim$discourse_memory[ is.na(opt_message) , message := message ] 
     sim$discourse_memory[ !is.na(opt_message) , message := ifelse( best_action == "Unoptimized", opinion, opt_message) ] 
     sim$discourse_memory[ , opt_message := NULL ]
@@ -865,38 +971,22 @@ bingbong <<- sim$discourse_memory
     sim$discourse_memory[ , nbh_incohesion := vec_get_nbh_incohesion(sender) ] 
     sim$discourse_memory[ , self_incohesion := vec_get_self_incohesion( sender ) ] 
     sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, message, nbh_incohesion, self_incohesion, past_messages, past_opinions, sender_business, receiver_business, past_sender_business, past_receiver_business, past_nbh_incohesion, past_self_incohesion)] 
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business  ),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business  )
-      )] 
-    sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_receiver_business, y=receiver_business  ),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                          }, x=past_receiver_business, y=receiver_business  )
-      )] 
-    sim$discourse_memory[ , past_nbh_incohesion := ifelse(lengths(past_nbh_incohesion) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                         mapply(function(x, y) {
-                                           list(c(unlist(x), y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion  ),
-                                         mapply(function(x, y) {
-                                           list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion  )
-      )] 
-    sim$discourse_memory[ , past_self_incohesion := ifelse(lengths(past_self_incohesion) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_self_incohesion, y=self_incohesion  ),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_energy_model$opinion_memory_depth], y))
-                                          }, x=past_self_incohesion, y=self_incohesion  )
-      )] 
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
+    sim$discourse_memory[ , past_receiver_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_receiver_business, y=receiver_business )
+   ]
+    sim$discourse_memory[ , past_nbh_incohesion := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_nbh_incohesion, y=nbh_incohesion )
+   ]
+    sim$discourse_memory[ , past_self_incohesion := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_self_incohesion, y=self_incohesion )
+   ]
 
     sim$messages_temp <- copy(sim$messages) 
     setnames(sim$messages_temp, old = c("sender", "receiver"), new = c("receiver", "sender")) 
@@ -923,6 +1013,43 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
     sim$opinion_updating <- sim$opinion_updating[ , .(sender, receiver, opinion_receiver, assumption_sender, opt_message )] 
     sim$opinion_updating <- sim$opinion_updating[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L] 
     sim$opinion_updating <- sim$opinion_updating[merge_sender_messages, on=c("sender"), nomatch = 0L] 
+    sim$opinion_updating[ , distance_to_past_opinions := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
+		mean(
+		  sapply(new_series, function(x) {
+		    abs(x - b)
+		  })
+		)
+	      }, a=past_opinions, b=assumption_sender)] 
+    sim$opinion_updating[ , distance_to_past_messages := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_energy_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
+	     max(
+		sapply(new_series, function(x) {
+		      abs(x - b)
+		   })
+	   )
+      }, a=past_messages, b=assumption_sender  )] 
+
     sim$opinion_updating[ , distance_to_past_opinions := mapply(function(a,b) {
         mean(
           sapply(a, function(x) {
@@ -960,7 +1087,7 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
 
 			      for (i in 1:length(x)) {
 
-				      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$opinion_memory_depth) {
+				      if (runif(1, 0, 1) > 1/(i**params(sim)$rc_energy_model$memory)) {
 				      new_series <- c(new_series, series[i])
 			      }
 			      }
@@ -1050,22 +1177,14 @@ if ( length(c(sim$bothers, sim$receivers)) > 0) {
 
     sim$discourse_memory[ , receiver_business := 0 ] 
     sim$discourse_memory[ , sender_business := 0 ] 
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x), y))
-                                            }, x=past_sender_business, y=sender_business  ),
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_sender_business, y=sender_business  )
-      )] 
-    sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_energy_model$energy_params_memory_depth,
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business  ),
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x)[1:params(sim)$rc_energy_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business  )
-      )] 
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
+    sim$discourse_memory[ , past_receiver_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_receiver_business, y=receiver_business )
+   ]
 
 sim$opinion_updating <- copy(sim$discourse_memory) 
 sim$opinion_updating[ , opinion_receiver_new := mapply(function(x, y) { 
@@ -1075,7 +1194,7 @@ new_series <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i**2 / params(sim)$rc_energy_model$opinion_memory_depth) {
+	      if (runif(1, 0, 1) > 1/(i**params(sim)$rc_energy_model$memory)) {
 	      new_series <- c(new_series, series[i])
       }
       }
