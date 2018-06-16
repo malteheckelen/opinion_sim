@@ -27,16 +27,13 @@ defineModule(sim, list(
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
     defineParameter("other_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which other agents to have varying opinions over time."),
     defineParameter("self_incons_tolerance", "numeric", 0.1, NA, NA, "The parameter controlling the tolerance for the degree with which the agent himself has varying opinions over time."),
-    defineParameter("message_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember messages for."),
-    defineParameter("opinion_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember opinions for."),
+    defineParameter("memory", "numeric", 1, NA, NA, "The number of time steps agents remember messages for."),
     defineParameter("energy_level", "numeric", 100, NA, NA, "The starting energy level of every agent."),
     defineParameter("restoration_factor", "numeric", 20, NA, NA, "The number of energy units that are restored to agents at the end of every round."),
-    defineParameter("energy_params_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember statistics relevant for overall action selection for."),
     defineParameter("no_groups", "numeric", 1, NA, NA, "The number social groups."),
     defineParameter("expert_percentage", "numeric", 0, NA, NA, "The percentage of declared experts."),
     defineParameter("sigma_complexity", "numeric", 1, NA, NA, "The percentage of declared experts."),
-    defineParameter("initial_opinion_confidence", "numeric", 1, NA, NA, "The standard deviation of past opinions (centered around the current opinion)."),
-    defineParameter("argumentation_memory_depth", "numeric", 1, NA, NA, "The number of time steps agents remember argumentations of various complexities for.")
+    defineParameter("initial_opinion_confidence", "numeric", 1, NA, NA, "The standard deviation of past opinions (centered around the current opinion).")
   ),
   inputObjects = bind_rows(
     expectsInput("environment", "tbl_graph", "The environment for the agents"),
@@ -223,8 +220,8 @@ rc_sh_modelInit <- function(sim) {
 
   sim$discourse_memory <- sim$messages[ , -c("receiver", "assumption_receiver") ][ , .SD[1], by="sender"]
   sim$discourse_memory[ , past_opinions := sapply(opinion_sender, function(x) {list(
-		    ifelse(rnorm(params(sim)$rc_sh_model$opinion_memory_depth, x, params(sim)$rc_sh_model$initial_opinion_confidence) > 1, 1,
-			    ifelse(rnorm(params(sim)$rc_sh_model$opinion_memory_depth, x, params(sim)$rc_sh_model$initial_opinion_confidence) < 0, 0, rnorm(params(sim)$rc_sh_model$opinion_memory_depth, x, params(sim)$rc_sh_model$initial_opinion_confidence) ) ) )  } )] 
+		    ifelse(rnorm(times(sim)$end[1], x, params(sim)$rc_sh_model$initial_opinion_confidence) > 1, 1,
+			    ifelse(rnorm(times(sim)$end[1], x, params(sim)$rc_sh_model$initial_opinion_confidence) < 0, 0, rnorm(times(sim)$end[1], x, params(sim)$rc_sh_model$initial_opinion_confidence) ) ) )  } )] 
   setnames(sim$discourse_memory, "opinion_sender", "opinion") 
   sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, past_opinions, op_compl)] 
   sim$discourse_memory[ , past_op_compls := sapply(op_compl, function(x) {list(x)} ) ] 
@@ -244,13 +241,28 @@ rc_sh_modelInit <- function(sim) {
     sim$actions_send <- sim$actions_send_temp[sim$actions_send, on = c("sender" = "agent_id"), nomatch = 0L , allow.cartesian = TRUE ] 
     sim$actions_send <- sim$actions_send[sim$discourse_memory, on = c("sender"), nomatch = 0L] 
     sim$actions_send[ , involvement := sapply( past_op_compls, function(x) mean(x) )  ] 
-    sim$actions_send[ , msg_compl := mapply(function(a, b, k) {
+    sim$actions_send_temp <- copy(sim$actions_send)[ , -c("receiver", "assumption_receiver") ]
+    sim$actions_send_temp <- sim$actions_send_temp[ , .SD[1], by="sender", nomatch=0L ]
+    sim$actions_send_temp[ , msg_compl := mapply(function(a, b, k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
+      ifelse(is.na(mean(new_series)), y, new_series)
+
         switch(k,
                "Unoptimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
+                 b + ifelse(mean(new_series - b) > 0, mean(new_series - b), 0) 
 	       },
                "Optimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
+                 b + ifelse(mean(new_series - b) > 0, mean(new_series - b), 0) 
 	       },
                "Unoptimized_appeal" = {
                  0
@@ -260,32 +272,43 @@ rc_sh_modelInit <- function(sim) {
 	       }
         )
       }, a=past_op_compls, b=op_compl, k=actions)] 
-    sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+    sim$actions_send_temp[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                },
                "Unoptimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
@@ -325,12 +348,14 @@ rc_sh_modelInit <- function(sim) {
         )
       }, a=opinion_sender, b=opt_message, c=assumption_receiver, k=actions)] 
     sim$actions_send[ , distance_message_assumption := sum(distance_message_assumption), by=sender]
+    sim$actions_send <- sim$actions_send_temp[ , .(sender, msg_compl, distance_to_past_opinions) ][sim$actions_send, on="sender" ]
     sim$actions_send <- sim$actions_send[ , .(sender, actions, util_score, distance_to_past_opinions, distance_message_opinion, distance_message_assumption, msg_compl, involvement)]
     sim$actions_send <- unique(sim$actions_send)
     sim$actions_send[ .("Unoptimized") , util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions"] 
     sim$actions_send[ .("Unoptimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions"] 
     sim$actions_send[ .("Optimized"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions"] 
     sim$actions_send[ .("Optimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions"] 
+    sim$msg_compl_storage <- sim$actions_send[ , util_score := sum(util_score), by=c("sender", "actions") ][ , max_util := max(util_score), by="sender" ][ , msg_compl := ifelse( max_util == util_score, msg_compl, NA), by="sender" ][ !is.na(msg_compl)][ , .(sender, msg_compl)][ , .SD[1], by="sender", nomatch=0L]
     sim$actions_send[ , agent_id := sender ] 
     sim$actions_send[ , .(agent_id, actions, util_score) ] 
     setkey(sim$actions_send, "agent_id") 
@@ -390,6 +415,7 @@ rc_sh_modelInit <- function(sim) {
       }, a=past_op_compls, b=op_compl, c= sender_business, k=best_action)] 
     sim$discourse_memory[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] 
     sim$discourse_memory[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] 
+    sim$discourse_memory <- sim$discourse_memory[ , -c("msg_compl")][sim$msg_compl_storage, on="sender", nomatch=0L ]
     sim$discourse_memory[ , past_messages := mapply(function(x,y,z) {
 
 	      ifelse(x == "Unoptimized",
@@ -397,15 +423,12 @@ rc_sh_modelInit <- function(sim) {
 		      z)
 
 				   }, x=best_action, y=opinion_sender, z=opt_message) ] 
-    sim$discourse_memory[ , past_msg_compls := sapply(op_compl, function(x) { list(x) } ) ] 
-    sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_sh_model$opinion_memory_depth,
-                                   mapply(function(x, y) {
-                                     list(c(unlist(x), y))
-                                   }, x=past_opinions, y=opinion_sender),
-                                   mapply(function(x, y) {
-                                     list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                   }, x=past_opinions, y=opinion_sender)
-      )] 
+    sim$discourse_memory[ , past_messages := sapply(past_messages, function(x) { list(x) } ) ] 
+    sim$discourse_memory[ , past_msg_compls := sapply(msg_compl, function(x) { list(x) } ) ] 
+    sim$discourse_memory[ , past_opinions := mapply(function(x, y) {
+	    list(c(unlist(x), y))}
+	    , x=past_opinions, y=opinion_sender )
+   ]
     setnames(sim$discourse_memory, "opinion_sender", "opinion") 
     setnames(sim$discourse_memory, "opt_message", "message") 
     sim$discourse_memory <- sim$discourse_memory[ , .(sender, receiver, opinion, message, op_compl, msg_compl, past_messages, past_opinions, sender_business, receiver_business, past_msg_compls, past_op_compls)] 
@@ -441,22 +464,7 @@ rc_sh_modelInit <- function(sim) {
     setkey(sim$messages, sender, receiver)
     sim$messages <- sim$messages[sim$actions_send, nomatch=0L, on=c("sender" = "agent_id")]  
     sim$messages <- merge(sim$messages, sim$discourse_memory[ , .(sender, past_msg_compls, past_op_compls)], nomatch=0L, by=c("sender")) 
-    sim$messages[, msg_compl := mapply(function(a, b, k) {
-        switch(k,
-               "Unoptimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) # new opinion can be argued for with the mean deviation complexity of own opinion complexity 
-	       },
-               "Optimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
-	       },
-               "Unoptimized_appeal" = {
-                 0
-	       },
-               "Optimized_appeal" = {
-                 0 
-	       }
-        )
-      }, a=past_op_compls, b=op_compl, k=best_action)] 
+    sim$messages <- sim$messages[ , -c("msg_compl")][sim$msg_compl_storage, on="sender", nomatch=0L ]
     sim$messages[ , assumption_sender := ifelse( ( best_action == "Unoptimized" | best_action == "Unoptimized_appeal") , opinion_sender, opt_message)] 
     sim$messages[ , past_msg_compls := NULL ][ , past_op_compls := NULL ][ , best_action == NULL ]
     setkey(sim$messages, "sender", "receiver") 
@@ -556,8 +564,19 @@ rc_sh_modelInit <- function(sim) {
 	    sim$opinion_updating_s <- sim$opinion_updating_s[ , .(sender, receiver, opinion_receiver, assumption_sender, opt_message, op_compl_receiver, msg_compl, best_action)] 
             sim$opinion_updating_s <- sim$opinion_updating_s[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L] 
 	    sim$opinion_updating_s[ , distance_to_past_opinions := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
 		mean(
-		  sapply(a, function(x) {
+		  sapply(new_series, function(x) {
 		    abs(x - b)
 		  })
 		)
@@ -658,22 +677,14 @@ rc_sh_modelInit <- function(sim) {
     sim$discourse_memory <- sim$agent_characteristics[ , .(agent_id, opinion) ][sim$discourse_memory[ , -c("opinion")], on=c("agent_id" = "sender") ] 
     setnames(sim$discourse_memory, "agent_id", "sender") 
     setkey(sim$discourse_memory, sender)
-    sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business),
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business)
-      )] 
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business)
-      )] 
+    sim$discourse_memory[ , past_receiver_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_receiver_business, y=receiver_business )
+   ]
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
 
     #### sim$discourse_memory table specs at this point:
     # rowlength: ( sim$environment %>% activate(edges) %>% as_tibble %>% nrow )*2 (in case of undirected)
@@ -696,7 +707,13 @@ rc_sh_modelInit <- function(sim) {
 rc_sh_modelStep <- function(sim) {
 
   print(time(sim))
-
+if (time(sim) == 66 ) {
+	chos_act <<- sim$chosen_actions
+	discmem <<- sim$discourse_memory
+	mess <<- sim$messages
+	act_send <<- sim$actions_send
+	sim$act_overall <<- sim$actions_overall
+}
   ########################
   #### REBUILD TABLES ####
   ########################
@@ -804,7 +821,7 @@ new_series <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i / params(sim)$rc_sh_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
 	      new_series <- c(new_series, series[i])
       }
       }
@@ -818,7 +835,7 @@ new_series <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i / params(sim)$rc_sh_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory) {
 	      new_series <- c(new_series, series[i])
       }
       }
@@ -832,7 +849,7 @@ new_series_one <- vector()
 
       for (i in 1:length(x)) {
 
-	      if (runif(1, 0, 1) > i / params(sim)$rc_sh_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory) {
 	      new_series_one <- c(new_series_one, series[i])
       }
       }
@@ -844,7 +861,7 @@ new_series_two <- vector()
 
       for (i in 1:length(y)) {
 
-	      if (runif(1, 0, 1) > i / params(sim)$rc_sh_model$energy_params_memory_depth) {
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory) {
 	      new_series_two <- c(new_series_two, series[i])
       }
       }
@@ -953,22 +970,14 @@ new_series_two <- vector()
   #######################################################
 
   sim$discourse_memory <- sim$discourse_memory[ , -c("opinion", "op_compl") ][sim$agent_characteristics[ , .(agent_id, opinion, op_compl) ], on=c("sender" = "agent_id")]  
-  sim$discourse_memory[ , past_opinions := ifelse(lengths(past_opinions) < params(sim)$rc_sh_model$opinion_memory_depth,
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x), y))
-                                 }, x=past_opinions, y=opinion),
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                 }, x=past_opinions, y=opinion)
-    )] 
-   sim$discourse_memory[ ,  past_op_compls := ifelse(lengths(past_op_compls) < params(sim)$rc_sh_model$argumentation_memory_depth,
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x), y))
-                                 }, x=past_op_compls, y=op_compl),
-                                 mapply(function(x, y) {
-                                   list(c(unlist(x)[1:params(sim)$rc_sh_model$argumentation_memory_depth], y))
-                                 }, x=past_op_compls, y=op_compl)
-    )] 
+  sim$discourse_memory[ , past_opinions := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_opinions, y=opinion )
+   ]
+  sim$discourse_memory[ , past_op_compls := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_op_compls , y=op_compl )
+   ]
    sim$discourse_memory[ , assumption_receiver := NULL ][ , opt_message := NULL ]
    setkey(sim$discourse_memory, sender)
   
@@ -984,13 +993,28 @@ new_series_two <- vector()
     sim$actions_send <- sim$actions_send_temp[sim$actions_send, on = c("sender" = "agent_id"), nomatch = 0L, allow.cartesian = TRUE] 
     sim$actions_send <- sim$actions_send[sim$discourse_memory, on = c("sender"), nomatch = 0L] 
     sim$actions_send[, involvement := sapply( past_op_compls, function(x) mean(unlist(x)) )  ] 
-    sim$actions_send[, msg_compl := mapply(function(a, b, c, k) {
+    sim$actions_send_temp <- copy(sim$actions_send)[ , -c("receiver", "assumption_receiver") ]
+    sim$actions_send_temp <- sim$actions_send_temp[ , .SD[1], by="sender", nomatch=0L ]
+    sim$actions_send_temp[ , msg_compl := mapply(function(a, b, k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
+      ifelse(is.na(mean(new_series)), y, new_series)
+
         switch(k,
                "Unoptimized" = {
-                 b + ifelse(mean(c(c(unlist(a)), c(unlist(c))) - b) > 0, mean(c(c(unlist(a)), c(unlist(c)))), 0) 
+                 b + ifelse(mean(new_series - b) > 0, mean(new_series - b), 0) 
 	       },
                "Optimized" = {
-                 b + ifelse(mean(c(c(unlist(a)), c(unlist(c)))- b) > 0, mean(c(c(unlist(a)), c(unlist(c)))), 0) 
+                 b + ifelse(mean(new_series - b) > 0, mean(new_series - b), 0) 
 	       },
                "Unoptimized_appeal" = {
                  0
@@ -999,71 +1023,94 @@ new_series_two <- vector()
                  0 
 	       }
         )
-      }, a=past_op_compls, b=op_compl, c=past_msg_compls, k=actions)]
-    sim$actions_send[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+      }, a=past_op_compls, b=op_compl, k=actions)] 
+    sim$actions_send_temp[, distance_to_past_opinions := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                },
                "Unoptimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                }
         )
-      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)] 
-    sim$actions_send[, distance_to_past_messages := mapply(function(a,b,c,k) {
+      }, a=past_opinions, b=opt_message, c=opinion_sender, k=actions)]
+    sim$actions_send_temp[, distance_to_past_messages := mapply(function(a,b,c,k) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         switch(k,
                "Unoptimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                },
                "Unoptimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - c)
                    })
                  )
                },
                "Optimized_appeal" = {
                  mean(
-                   sapply(a, function(x) {
+                   sapply(new_series, function(x) {
                      abs(x - b)
                    })
                  )
                }
         )
-      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions)] 
+      }, a=past_messages, b=opt_message, c=opinion_sender, k=actions)]
+    sim$actions_send <- sim$actions_send_temp[ , .(sender, msg_compl, distance_to_past_messages, distance_to_past_opinions) ][sim$actions_send, on="sender" ]
     sim$actions_send[, distance_message_opinion := mapply(function(a,b,k) {
         switch(k,
                "Unoptimized" = {
@@ -1101,6 +1148,8 @@ new_series_two <- vector()
     sim$actions_send[ .("Unoptimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions", nomatch=0L] 
     sim$actions_send[ .("Optimized"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption - msg_compl + involvement, on="actions", nomatch=0L] 
     sim$actions_send[ .("Optimized_appeal"), util_score := 0 - distance_to_past_opinions - distance_message_opinion - distance_message_assumption + msg_compl - involvement, on="actions", nomatch=0L] 
+    test <<- sim$actions_send
+    sim$msg_compl_storage <- sim$actions_send[ , util_score := sum(util_score), by=c("sender", "actions") ][ , max_util := max(util_score), by="sender" ][ , msg_compl := ifelse( max_util == util_score, msg_compl, NA), by="sender" ][ !is.na(msg_compl)][ , .(sender, msg_compl)][ , .SD[1], by="sender", nomatch=0L]
     sim$actions_send <- sim$actions_send[ , agent_id := sender ] 
     sim$actions_send <- sim$actions_send[ , .(agent_id, actions, util_score)] 
     sim$actions_send[, util_score := sum(util_score), by=c("agent_id", "actions")] 
@@ -1143,25 +1192,11 @@ new_series_two <- vector()
     sim$receive_busy <- unique(sim$receive_busy) 
 
     sim$discourse_memory <- merge(copy(sim$discourse_memory)[ , -c("sender_business", "receiver_business")], sim$send_busy[ , -c("receiver_business") ], by=c("sender"), all.x=TRUE, all.y=TRUE) 
-    sim$discourse_memory <- sim$discourse_memory[sim$receive_busy, on=c("sender"="receiver") ] 
+    sim$discourse_memory <- merge(sim$discourse_memory, sim$receive_busy, by=c("sender"="receiver"), all.x=TRUE )  
     sim$discourse_memory[ , receiver_business := ifelse(is.na(receiver_business), 0, receiver_business) ] 
-
-    sim$discourse_memory[ !is.na(best_action) , msg_compl := mapply(function(a, b, c, k) {
-        switch(k,
-               "Unoptimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0 | mean(c(unlist(a)) - c) > 0, max(c(mean(c(unlist(a)) - b), mean(c(unlist(a)) - c))), 0) 
-	       },
-               "Optimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0 | mean(c(unlist(a)) - c) > 0, max(c(mean(c(unlist(a)) - b), mean(c(unlist(a)) - c))), 0) 
-	       },
-               "Unoptimized_appeal" = {
-                 0
-	       },
-               "Optimized_appeal" = {
-                 0 
-	       }
-        )
-      }, a=past_op_compls, b=op_compl, c=past_msg_compls, k=best_action)] 
+    sim$discourse_memory[ , receiver := NULL]
+    sim$discourse_memory <- sim$discourse_memory[ , .SD[1], by="sender", nomatch=0L]
+    sim$discourse_memory <- merge(sim$discourse_memory[ , -c("msg_compl")], sim$msg_compl_storage, by="sender", all.x=TRUE) 
     sim$discourse_memory[ !is.na(best_action), sender_business := mapply(function(a, b, c, k) {
         switch(k,
                "Unoptimized" = {
@@ -1179,58 +1214,36 @@ new_series_two <- vector()
         )
       }, a=msg_compl , b=op_compl, c= sender_business, k=best_action)] 
     sim$discourse_memory[ , sender_business := ifelse(is.na(sender_business), 0, sender_business) ] 
-    sim$discourse_memory[ , past_messages := ifelse( is.na(best_action),
-            past_messages,
-            ifelse(lengths(past_messages) < params(sim)$rc_sh_model$message_memory_depth,
-                                   ifelse( (best_action == "Unoptimized" | best_action == "Unoptimized_appeal") ,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_messages, y=opinion),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_messages, y=opt_message)),
-                                   ifelse( (best_action == "Unoptimized" | best_action == "Unoptimized_appeal") ,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opinion),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$message_memory_depth], y))
-                                          }, x=past_messages, y=opt_message)
-                                   )
-                                 )
-      )]
+    sim$discourse_memory[ is.na(best_action) , past_messages := past_messages ]
+    sim$discourse_memory[ .(c("Unoptimized", "Unoptimized_appeal")) , 
+	    past_messages := mapply(function(x, y) {
+			    list(c(unlist(x), y))
+		 }
+	    , x=past_messages, y=opinion ), on="best_action" ]
+    sim$discourse_memory[ .(c("Optimized", "Optimized_appeal")) , 
+	    past_messages := mapply(function(x, y) {
+			    list(c(unlist(x), y))
+		 }
+	    , x=past_messages, y=opinion ), on="best_action" ]
     sim$discourse_memory[ is.na(opt_message) , message := message ] 
     sim$discourse_memory[ !is.na(opt_message) , message := ifelse( ( best_action == "Unoptimized" | best_action == "Unoptimized_appeal" ), opinion, opt_message) ] 
     sim$discourse_memory[ , opt_message := NULL ] 
     sim$discourse_memory <- sim$discourse_memory[ , .(sender, opinion, message, op_compl, msg_compl, past_messages, past_opinions, past_op_compls, past_msg_compls, sender_business, receiver_business, past_sender_business, past_receiver_business, past_nbh_incohesion, past_self_incohesion)] 
     sim$discourse_memory <- sim$discourse_memory[ !duplicated(sim$discourse_memory[ , as.logical(lapply(sim$discourse_memory, function(x) !is.list(x) ) ) , with = FALSE ]) , ]
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business)
-      )]
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
     sim$discourse_memory[ , nbh_incohesion := vec_get_nbh_incohesion(sender) ] 
-    sim$discourse_memory[ , past_nbh_incohesion := ifelse(lengths(past_nbh_incohesion) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                         mapply(function(x, y) {
-                                           list(c(unlist(x), y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion),
-                                         mapply(function(x, y) {
-                                           list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                         }, x=past_nbh_incohesion, y=nbh_incohesion)
-      )] 
+    sim$discourse_memory[ , past_nbh_incohesion := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_nbh_incohesion, y=nbh_incohesion )
+   ]
     sim$discourse_memory[ , self_incohesion := vec_get_self_incohesion( sender ) ] 
-    sim$discourse_memory[ , past_self_incohesion := ifelse(lengths(past_self_incohesion) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_self_incohesion, y=self_incohesion),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                          }, x=past_self_incohesion, y=self_incohesion)
-      )] 
-
+    sim$discourse_memory[ , past_self_incohesion := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_self_incohesion, y=self_incohesion )
+   ]
      sim$messages_temp <- copy(sim$messages) 
      setnames(sim$messages_temp, old = c("sender", "receiver"), new = c("receiver", "sender")) 
      sim$messages_temp <- sim$messages_temp[ , .(receiver, opinion_sender, op_compl)] 
@@ -1239,27 +1252,12 @@ new_series_two <- vector()
 
     sim$messages <- sim$messages[sim$actions_send, nomatch=0L, on=c("sender" = "agent_id")]  
     sim$messages <- merge(sim$messages, sim$discourse_memory[ , .(sender, past_msg_compls, past_op_compls)], nomatch=0L, by=c("sender")) 
-    sim$messages[, msg_compl := mapply(function(a, b, k) {
-        switch(k,
-               "Unoptimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
-	       },
-               "Optimized" = {
-                 b + ifelse(mean(c(unlist(a)) - b) > 0, mean(c(unlist(a)) - b), 0) 
-	       },
-               "Unoptimized_appeal" = {
-                 0
-	       },
-               "Optimized_appeal" = {
-                 0 
-	       }
-        )
-      }, a=past_op_compls, b=op_compl, k=best_action)] 
+    sim$messages <- sim$messages[ , -c("msg_compl")][sim$msg_compl_storage, on="sender", nomatch=0L]
     sim$messages[ , assumption_sender := ifelse( ( best_action == "Unoptimized" | best_action == "Unoptimized_appeal") , opinion_sender, opt_message )] 
     sim$messages[ , past_msg_compls := NULL ][ , past_op_compls := NULL ][ , actions := NULL ][ , best_action := NULL ] 
     sim$messages <- unique(sim$messages)
     setkey(sim$messages, "sender") 
- 
+
     ###################
     #### RECEIVING ####
     ###################
@@ -1361,15 +1359,37 @@ test_two <<- copy(sim$opinion_updating_h)
             sim$opinion_updating_s <- sim$opinion_updating_s[merge_receiver_opinions, on=c("receiver"="sender"), nomatch = 0L] 
             sim$opinion_updating_s <- sim$opinion_updating_s[merge_sender_messages, on=c("sender"), nomatch = 0L] 
 	    sim$opinion_updating_s[ , distance_to_past_opinions := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
 		mean(
-		  sapply(a, function(x) {
+		  sapply(new_series, function(x) {
 		    abs(x - b)
 		  })
 		)
 	      }, a=past_opinions, b=assumption_sender)] 
     sim$opinion_updating_s[ , distance_to_past_messages := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
 	     max(
-		sapply(a, function(x) {
+		sapply(new_series, function(x) {
 		      abs(x - b)
 		   })
 	   )
@@ -1449,6 +1469,8 @@ test_two <<- copy(sim$opinion_updating_h)
           setkey(sim$discourse_memory, "sender")
           sim$opinion_updating_n <- sim$discourse_memory[ .(sender, past_opinions, op_compl)][ .(sim$nothingers), on="sender" ] 
 	  sim$opinion_updating_n <- sim$opinion_updating_n[ , .SD[1], by=sender]
+	  discmem <<- sim$discourse_memory
+	  test <<- sim$opinion_updating_n
           sim$opinion_updating_n[ , opinion_receiver_new := mapply(function(x, y) { 
      
 			series <- rev(unlist(x))
@@ -1456,7 +1478,7 @@ test_two <<- copy(sim$opinion_updating_h)
 
 			      for (i in 1:length(x)) {
 
-				      if (runif(1, 0, 1) > i**2 / params(sim)$rc_sh_model$opinion_memory_depth) {
+				      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory) {
 				      new_series <- c(new_series, series[i])
 			      }
 			      }
@@ -1470,7 +1492,7 @@ test_two <<- copy(sim$opinion_updating_h)
 
 			      for (i in 1:length(x)) {
 
-				      if (runif(1, 0, 1) > i / params(sim)$rc_sh_model$opinion_memory_depth) {
+				      if (runif(1, 0, 1) > 1/i**params(sim)$rc_sh_model$memory) {
 				      new_series <- c(new_series, series[i])
 			      }
 			      }
@@ -1516,22 +1538,14 @@ test_two <<- copy(sim$opinion_updating_h)
 
     sim$discourse_memory <- sim$agent_characteristics[ , .(agent_id, opinion) ][sim$discourse_memory[ , -c("opinion")], on=c("agent_id" = "sender") ]  
     setnames(sim$discourse_memory, "agent_id", "sender") 
-    sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business),
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business)
-      )] 
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$opinion_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business)
-      )] 
+    sim$discourse_memory[ , past_receiver_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_receiver_business, y=receiver_business )
+   ]
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
     setkey(sim$discourse_memory, sender)
 
   } else {
@@ -1543,26 +1557,16 @@ test_two <<- copy(sim$opinion_updating_h)
     # the past_receiver_business and past_sender_business needs to be updated with 0 business for this round
     sim$discourse_memory[ , receiver_business := 0 ] 
     sim$discourse_memory[ , sender_business := 0 ] 
-    sim$discourse_memory[ , past_receiver_business := ifelse(lengths(past_receiver_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x), y))
-                                            }, x=past_receiver_business, y=receiver_business),
-                                            mapply(function(x, y) {
-                                              list(c(unlist(x)[1:params(sim)$rc_sh_model$energy_params_memory_depth], y))
-                                            }, x=past_receiver_business, y=receiver_business)
-      )] 
-    sim$discourse_memory[ , past_sender_business := ifelse(lengths(past_sender_business) < params(sim)$rc_sh_model$energy_params_memory_depth,
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x), y))
-                                          }, x=past_sender_business, y=sender_business),
-                                          mapply(function(x, y) {
-                                            list(c(unlist(x)[1:params(sim)$rc_sh_model$energy_params_memory_depth], y))
-                                          }, x=past_sender_business, y=sender_business)
-      )]
-
+    sim$discourse_memory[ , past_receiver_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_receiver_business, y=receiver_business )
+   ]
+    sim$discourse_memory[ , past_sender_business := mapply(function(x,y) {
+	    list(c(unlist(x), y))}
+	    , x=past_sender_business, y=sender_business )
+   ]
 
   sim$opinion_updating <- copy(sim$discourse_memory) 
-  sim$opinion_updating[ , opinion_receiver_new := sapply(past_opinions, function(x) { median(x) }) ] 
   sim$opinion_updating[ , opinion_receiver_new := mapply(function(x, y) { 
      
 			series <- rev(unlist(x))
@@ -1570,7 +1574,7 @@ test_two <<- copy(sim$opinion_updating_h)
 
 			      for (i in 1:length(x)) {
 
-				      if (runif(1, 0, 1) > i / params(sim)$rc_energy_model$opinion_memory_depth) {
+				      if (runif(1, 0, 1) > 1/i**params(sim)$rc_sh_model$memory) {
 				      new_series <- c(new_series, series[i])
 			      }
 			      }
@@ -1585,7 +1589,7 @@ test_two <<- copy(sim$opinion_updating_h)
 
 			      for (i in 1:length(x)) {
 
-				      if (runif(1, 0, 1) > i / params(sim)$rc_energy_model$opinion_memory_depth) {
+				      if (runif(1, 0, 1) > 1/i**params(sim)$rc_sh_model$memory) {
 				      new_series <- c(new_series, series[i])
 			      }
 			      }
