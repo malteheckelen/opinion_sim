@@ -707,13 +707,7 @@ rc_sh_modelInit <- function(sim) {
 rc_sh_modelStep <- function(sim) {
 
   print(time(sim))
-if (time(sim) == 66 ) {
-	chos_act <<- sim$chosen_actions
-	discmem <<- sim$discourse_memory
-	mess <<- sim$messages
-	act_send <<- sim$actions_send
-	sim$act_overall <<- sim$actions_overall
-}
+
   ########################
   #### REBUILD TABLES ####
   ########################
@@ -788,14 +782,25 @@ if (time(sim) == 66 ) {
   sim$actions_overall_temp[ , max_send_energy_loss := .N*2, by = sender ] 
   sim$actions_overall_temp[ , max_receive_energy_loss := .N*2, by = receiver] 
   sim$actions_overall_temp <- sim$actions_overall_temp[sim$discourse_memory, on=c("sender") ] 
-  sim$actions_overall_temp <- sim$actions_overall_temp[sim$discourse_memory[, .(sender, message)][ , assumption_sender := message][ , -c("message")], on=c("receiver"="sender"), nomatch=0L] 
-  sim$actions_overall_temp[ , distance_to_past_opinions := mapply(function(a,b) {
+  sim$actions_overall_temp <- sim$actions_overall_temp[sim$discourse_memory[, .(sender, message)][ , assumption_receiver := message][ , -c("message")], on=c("receiver"="sender"), nomatch=0L] 
+  sim$actions_overall_temp[, distance_to_past_opinions := mapply(function(a,b) {
+
+    series <- rev(unlist(a))
+    new_series <- vector()
+
+      for (i in 1:length(a)) {
+
+	      if (runif(1, 0, 1) < 1/i**params(sim)$rc_sh_model$memory ) {
+	      new_series <- c(new_series, series[i])
+      }
+      }
+
         mean(
-          sapply(a, function(x) {
+          sapply(new_series, function(x) {
             abs(x - b)
           })
         )
-      }, a=past_opinions, b=assumption_sender)] 
+      }, a=past_opinions, b=assumption_receiver)]
   sim$actions_overall_temp <- sim$actions_overall_temp[ , .(distance_to_past_opinions, sender, past_self_incohesion, past_nbh_incohesion, sender_business, receiver_business, past_receiver_business, past_sender_business, nbh_incohesion, self_incohesion, max_send_energy_loss, max_receive_energy_loss)] 
   sim$actions_overall_temp[ , control := sum(distance_to_past_opinions) , by=sender ] 
   sim$actions_overall_temp <- sim$actions_overall_temp[ , .SD[1], by=sender]
