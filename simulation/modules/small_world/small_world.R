@@ -58,7 +58,7 @@ small_world_Init <- function(sim) {
     as_tibble() %>%
     data.table() %>%
     .[, .(agent_id, neighborhood, nbh_size )] %>%
-    .[copy(data.table(agent_characteristics)), on = c("agent_id")]
+    .[copy(data.table(sim$agent_characteristics)), on = c("agent_id")]
 
   distribute_opinions(params(sim)$small_world$opinion_homophily)
 
@@ -80,8 +80,8 @@ distribute_opinions <- function(opinion_homophily) {
 	# 2. Give him an opinion determined by mean opinion
 	# 3. For all neighbors of this agent: Assign a randomly chosen opinion that lies within interval +/- Homophily Score of this agents opinion
 	# 4. For all neighbors of this agent: Repeat 4
-       
-        for (i in 1:nrow(agent_characteristics)) {
+      print(nrow(sim$agent_characteristics)) 
+        for (i in 1:nrow(sim$agent_characteristics)) {
 
 		if (i == 1) {
                            

@@ -172,8 +172,7 @@ data_collectionInit <- function(sim) {
         no_agents = params(sim)$basic_setup$no_agents, 
         no.cores = params(sim)$basic_setup$no.cores, 
     	agent_id = sim$agent_characteristics[ , agent_id],
-    	opinions = sim$agent_characteristics[ , opinion],
-	id_opinions = as.character(apply(sim$agent_characteristics, 1, function(x) { op_list <- list(x$opinion) ; names(op_list) <- x$agent_id ; op_list} ) )
+    	opinions = sim$agent_characteristics[ , opinion]
   	) %>% 
      	data.table()
    
@@ -310,11 +309,11 @@ data_collectionStep <- function(sim) {
         mu_opinion_distribution = params(sim)$basic_setup$mu_opinion_distribution ,
         sigma_opinion_distribution = params(sim)$basic_setup$sigma_opinion_distribution,
 	opinion_homophily = params(sim)$small_world$opinion_homophily,
+	epsilon = params(sim)$hegselmann_krause$epsilon,
         no_agents = params(sim)$basic_setup$no_agents, 
         no.cores = params(sim)$basic_setup$no.cores, 
-    	agent_id = sim$agent_characteristics[ , agent_id],
-    	opinions = sim$agent_characteristics[ , opinion],
-	id_opinions = as.character(apply(sim$agent_characteristics, 1, function(x) { op_list <- list(x$opinion) ; names(op_list) <- x$agent_id ; op_list} ) )
+    	agent_id = sim$agent_characteristics$agent_id,
+    	opinions = sim$agent_characteristics$opinion
   	) %>% 
      	data.table()
    

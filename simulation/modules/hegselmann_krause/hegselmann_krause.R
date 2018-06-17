@@ -93,7 +93,7 @@ hegselmann_krauseStep <- function(sim) {
     mutate(distance = opinion_from - opinion_to) %>%
     mutate(distance = abs(distance)) %>%
     mutate(within_epsilon = distance < params(sim)$hegselmann_krause$epsilon)
-  
+
   sim$agent_characteristics <- sim$agent_characteristics %>%
     inner_join(sim$distances_table, by=c("agent_id" = "from")) %>%
     group_by(agent_id) %>%
@@ -106,7 +106,7 @@ hegselmann_krauseStep <- function(sim) {
     mutate(opinion = coalesce(opinion.x, opinion.y)) %>%
     select(agent_id, opinion) %>%
     distinct()
-  
+
   return(invisible(sim))
   
 }
