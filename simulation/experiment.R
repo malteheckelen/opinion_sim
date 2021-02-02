@@ -1,21 +1,27 @@
 ### Experiments
 
-setwd('/home/malte/GitHub/R_MaDisBe/simulation')
-#setwd('~/GitHub/R_MaDisBe/simulation')
+setwd('/home/malte/projects/opinion_sim/simulation')
+
 library(SpaDES)  ## should automatically download all packages in the SpaDES family and their dependencies
 library(parallel)
 library(raster)
-## decide where you're working
-mainDir <- '/home/malte/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
-#mainDir <- '~/GitHub/R_MaDisBe/simulation' # SET YOUR MAIN DIRECTORY HERE.
+
+mainDir <- '/home/malte/projects/opinion_sim/simulation' # SET YOUR MAIN DIRECTORY HERE.
+
 setPaths(cachePath = "cache",
          modulePath = "./modules",
-         inputPath = "../data/inputs",
-         outputPath = "../data/outputs")
+         inputPath = "./../data/inputs",
+         outputPath = "./../data/outputs")
 
-modules <- list("basic_setup", "small_world", "hegselmann_krause", "data_collection" )
+#### run a Hegselmann-Kraus model
+
+## load previously defined modules
+
+modules <- list("basic_setup", "lattice", "hegselmann_krause", "data_collection" )
 
 times <- list(start = 0, end = 100)
+
+# set parameters for initial setup of model
 
 hk_parameters <- list(
   basic_setup = list(
@@ -23,94 +29,36 @@ hk_parameters <- list(
     sigma_opinion_distribution = 0.3,
     no_agents = 100 
     ),
-  small_world = list(
-    dim = 1,
-    nbh_size = 8,
-    rewire_p = 0.6,
-    opinion_homophily = 0.2
+  lattice = list(
+    directed=FALSE
   ),
   hegselmann_krause = list(
     epsilon = 0.2
   )
 )
 
-hk_experiment_parameters <- list(
-  basic_setup = list(
-    mu_opinion_distribution = 0,
-    sigma_opinion_distribution = list(0.7, 1.1, 1.5, 1.9)
-    ),
-  small_world = list(
-    dim = 1,
-    nbh_size = 8,
-    rewire_p = 0.6,
-    opinion_homophily = list(0.4,0.6,0.8)
-  ),
-  hegselmann_krause = list(
-    epsilon = list(0.4,0.6,0.8)
-  )
-)
-
 paths <- getPaths()
 
-#no_cores <- detectCores() - 1
-#cl <- makeCluster(no_cores)
-beginCluster()
 sim <- simInit(times = times, params = hk_parameters, modules = modules, paths = paths)
 out <- spades(sim)
-hk_experiments <- experiment(sim, params=hk_experiment_parameters, replicates = 3, saveExperiment=TRUE, experimentFile="hk_experiments.RData" )
-endCluster()
-
-modules <- list("basic_setup", "small_world", "rc_model", "data_collection" )
-
-times <- list(start = 0, end = 100)
-
-rc_parameters <- list(
-  basic_setup = list(
-    mu_opinion_distribution = 0,
-    sigma_opinion_distribution = 0.3,
-    no_agents = 100 
+demoSim <- suppressMessages(simInit(
+  times = list(start = 0, end = 100),
+  modules = "SpaDES_sampleModules",
+  params = list(
+    .globals = list(burnStats = "nPixelsBurned"),
+    randomLandscapes = list(
+      nx = 1e2, ny = 1e2, .saveObjects = "landscape",
+      .plotInitialTime = NA, .plotInterval = NA, inRAM = TRUE
     ),
-  small_world = list(
-    dim = 1,
-    nbh_size = 8,
-    rewire_p = 0.6,
-    opinion_homophily = 0.2
-  ),
-  rc_model = list(
-    epsilon = 0.2,
-    other_incons_tolerance = 0.2,
-    self_incons_tolerance = 0.2,
-    memory = 0.5,
-    initial_opinion_confidence = 0.2
-  )
-)
-
-rc_experiment_parameters <- list(
-  basic_setup = list(
-    mu_opinion_distribution = 0,
-    sigma_opinion_distribution = list(0.7, 1.1, 1.5, 1.9)
+    caribouMovement = list(
+      N = 1e2, .saveObjects = c("caribou"),
+      .plotInitialTime = 1, .plotInterval = 1, moveInterval = 1
     ),
-  small_world = list(
-    dim = 1,
-    nbh_size = 8,
-    rewire_p = 0.6,
-    opinion_homophily = list(0.4,0.6,0.8)
+    fireSpread = list(
+      nFires = 1e1, spreadprob = 0.235, persistprob = 0, its = 1e6,
+      returnInterval = 10, startTime = 0,
+      .plotInitialTime = 0, .plotInterval = 10
+    )
   ),
-  rc_model = list(
-    epsilon = list(0.4,0.6,0.8),
-    other_incons_tolerance = list(0.4,0.6,0.8),
-    self_incons_tolerance = list(0.4,0.6,0.8),
-    memory = list(1.0, 1.5, 2.0),
-    initial_opinion_confidence = list(0.4,0.6,0.8)
-  )
-)
-
-paths <- getPaths()
-
-#no_cores <- detectCores() - 1
-#cl <- makeCluster(no_cores)
-beginCluster()
-sim <- simInit(times = times, params = rc_parameters, modules = modules, paths = paths)
-out <- spades(sim)
-rc_experiments <- experiment(sim, params=rc_experiment_parameters, replicates = 3, saveExperiment=TRUE, experimentFile="rc_experiments.RData" )
-endCluster()
+  path = list(modulePath = system.file("sampleModules", package = "SpaDES.core"))
+))

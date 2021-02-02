@@ -14,7 +14,7 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "lattice.Rmd"),
-  reqdPkgs = list("igraph", "tidygraph", "dplyr"),
+  reqdPkgs = list("tidygraph"),
   parameters = rbind(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("directed", "logical", "FALSE", NA, NA, "Determines if the graph should be directed.")
@@ -35,7 +35,7 @@ doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
     init = {
       
       # first instance
-      lattice_Init(sim)
+      Init(sim)
 
     }
   )
@@ -43,7 +43,7 @@ doEvent.lattice <- function(sim, eventTime, eventType, debug = FALSE) {
   return(invisible(sim))
 }
 
-lattice_Init <- function(sim) {
+Init <- function(sim) {
   
   sim$environment <- construct_environment(sim) %>%
     activate(nodes) %>%

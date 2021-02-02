@@ -21,9 +21,8 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "hegselmann_krause.Rmd"),
-  reqdPkgs = list("dplyr"),
+  reqdPkgs = list('dplyr'),
   parameters = rbind(
-    # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("epsilon", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
     ),
   inputObjects = bind_rows(
@@ -43,14 +42,14 @@ doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) 
     eventType,
     init = {
       ## do stuff for this event
-      sim <- hegselmann_krauseInit(sim)
+      sim <- Init(sim)
       
       ## schedule future event(s)
       sim <- scheduleEvent(sim, eventTime = start(sim), moduleName = "hegselmann_krause", eventType = "step")
     },
     step = {
       ## do stuff for this event
-      sim <- hegselmann_krauseStep(sim)
+      sim <- Step(sim)
       
       ## schedule future event(s)
       sim <- scheduleEvent(sim, eventTime = time(sim)+1, moduleName = "hegselmann_krause", eventType = "step")
@@ -61,14 +60,14 @@ doEvent.hegselmann_krause <- function(sim, eventTime, eventType, debug = FALSE) 
   return(invisible(sim))
 }
 
-hegselmann_krauseInit <- function(sim) {
+Init <- function(sim) {
   # set within_epsilon column in opinions simulation attribute
   # reserve the Init in every of these simulations to place special attributes for modules
 
   return(invisible(sim))
 }
 
-hegselmann_krauseStep <- function(sim) {
+Step <- function(sim) {
   
   distances_part <- sim$environment %>%
     activate(edges) %>%

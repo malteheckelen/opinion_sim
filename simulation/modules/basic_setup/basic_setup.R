@@ -12,13 +12,10 @@ defineModule(sim, list(
   timeunit = "hour",
   citation = list("citation.bib"),
   documentation = list("README.txt", "data_collection.Rmd"),
-  reqdPkgs = list("dplyr", "data.table", "logitnorm"),
+  reqdPkgs = list(),
   parameters = bind_rows(
     # defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter."),
-    defineParameter("sigma_opinion_distribution", "numeric", 1, NA, NA, "The sigma parameter of the lognormal opinion distribution."),
-    defineParameter("mu_opinion_distribution", "numeric", 1, NA, NA, "The mu parameter of the lognormal opinion distribution."),
-    defineParameter("no.cores", "numeric", 1, NA, NA, "The number of cores for parallelization. If not needed / wanted, the default is one core."),
+    defineParameter("no_agents", "numeric", 0.1, NA, NA, "The Bounded Confidence parameter.")
   ),
   outputObjects = bind_rows(
     createsOutput("no_agents", "numeric", "The number of agents."),
@@ -30,23 +27,20 @@ doEvent.basic_setup <- function(sim, eventTime, eventType, debug=FALSE) {
   switch(
     eventType,
     init = {
-      sim <- basic_setupInit(sim)
+      sim <- Init(sim)
     }
   )
 }
 
-basic_setupInit <- function(sim) {
+Init <- function(sim) {
   
   sim$no_agents <- params(sim)$basic_setup$no_agents
   
   sim$agent_characteristics <- tibble(
     
     agent_id = seq(1, sim$no_agents, 1),
-    opinion = rep(1, sim$no_agents)
-    
-  ) %>%
-  data.table %>%
-  .[ , opinion := rlogitnorm(params(sim)$basic_setup$sigma_opinion_distribution, params(sim)$basic_setup$sigma_opinion_distribution, params(sim)$basic_setup$no_agents) ]
+    opinion = rep(runif(1), sim$no_agents)
+  )
  
   return(invisible(sim))
 
