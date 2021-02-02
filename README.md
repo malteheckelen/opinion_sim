@@ -1,6 +1,6 @@
 ## Opinion Dynamics Simulation with SpaDES
 
-[https://github.com/PredictiveEcology/SpaDES](SpaDES) is a simulation framework mainly used in ecology. However, it is highly customizable and modular, and can easily be adapted for other kinds of agent-based models. It allows easy reporting and plotting and once you're set up, you can extend it easily.
+[SpaDES](https://github.com/PredictiveEcology/SpaDES) is a simulation framework mainly used in ecology. However, it is highly customizable and modular, and can easily be adapted for other kinds of agent-based models. It allows easy reporting and plotting and once you're set up, you can extend it easily.
 
 However, getting into it can be daunting, because you have to keep track of a lot of files and dependencies. For my first attempt at a PhD, I tried SpaDES for my purposes. I didn't go on with it, but if I ever try something similar, I would use SpaDES again.
 
